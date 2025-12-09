@@ -51,13 +51,15 @@ class PersonaFilterDFS:
     
     def _matches_persona(self, request: CreditRequest, rules: Dict) -> bool:
         """Verifica se o request atende aos critérios da persona"""
-        if request.monthly_income < rules["min_income"]:
+        profile = request.customer_profile
+
+        if profile.income < rules["min_income"]:
             return False
         
-        if request.credit_score and request.credit_score < rules["min_credit_score"]:
+        if profile.credit_score and profile.credit_score < rules["min_credit_score"]:
             return False
         
-        if request.employment_status not in rules["employment"]:
+        if profile.employment_status not in rules["employment"]:
             return False
         
         return True
@@ -67,18 +69,18 @@ class PersonaFilterDFS:
         confidence = 0.0
         
         # Confiança baseada na renda (até 0.4)
-        income_ratio = request.monthly_income / (rules["min_income"] * 2)
+        income_ratio = profile.income / (rules["min_income"] * 2)
         confidence += min(income_ratio, 0.4)
         
         # Confiança baseada no credit score (até 0.4)
-        if request.credit_score:
-            score_ratio = request.credit_score / 850  # Score máximo
+        if profile.credit_score:
+            score_ratio = profile.credit_score / 850  # Score máximo
             confidence += min(score_ratio * 0.4, 0.4)
         else:
             confidence += 0.2  # Confiança parcial se não tiver score
         
         # Confiança baseada no emprego (até 0.2)
-        if request.employment_status in ["employed", "self_employed"]:
+        if profile.employment_status in ["employed", "self_employed"]:
             confidence += 0.2
         else:
             confidence += 0.1

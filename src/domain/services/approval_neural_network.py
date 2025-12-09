@@ -67,7 +67,7 @@ class ApprovalNeuralNetwork:
         approved_limit: float,
         requested_amount: float,
         risk_assessment: RiskAssessment,
-    ) -> Tuple[ApprovalStatus, float, List[str]]:
+    ) -> Tuple[ApprovalStatus, float, List[str], dict]:
         inputs = self._prepare_inputs(profile, approved_limit, requested_amount, risk_assessment)
         with torch.no_grad():
             probs = self.model(inputs)[0]
@@ -86,7 +86,12 @@ class ApprovalNeuralNetwork:
             reasons = self._get_rejection_reasons(profile, risk_assessment)
 
         status, reasons = self._apply_business_rules(status, reasons, profile, risk_assessment, confidence)
-        return status, confidence, reasons
+        prob_dict = {
+            "approved": float(probs[0].item()),
+            "pending": float(probs[1].item()),
+            "rejected": float(probs[2].item()),
+        }
+        return status, confidence, reasons, prob_dict
 
     def _prepare_inputs(
         self,

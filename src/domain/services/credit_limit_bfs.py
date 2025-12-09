@@ -24,21 +24,23 @@ class CreditLimitBFS:
             tuple[limit, factors]: Limite calculado e fatores contributivos
         """
         # Camada 1: Limite base por renda
+        profile = request.customer_profile
+
         income_limit = self._calculate_income_based_limit(
-            request.monthly_income,
+            profile.income,
             persona_limits["income_multiplier"]
         )
         
         # Camada 2: Ajuste por credit score
-        score_factor = self._calculate_score_factor(request.credit_score)
+        score_factor = self._calculate_score_factor(profile.credit_score)
         
         # Camada 3: Ajuste por emprego
-        employment_factor = self._calculate_employment_factor(request.employment_status)
+        employment_factor = self._calculate_employment_factor(profile.employment_status)
         
         # Camada 4: Ajuste por histórico
         history_factor = self._calculate_history_factor(
-            request.has_previous_loans,
-            request.debt_to_income_ratio
+            profile.num_existing_loans > 0,
+            profile.debt_to_income_ratio
         )
         
         # Combinar todos os fatores (BFS - processamento em camadas)

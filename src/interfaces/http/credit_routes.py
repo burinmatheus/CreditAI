@@ -2,156 +2,30 @@
 API Endpoints para Análise de Crédito
 """
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
-from typing import Optional, List
-from datetime import datetime
-from enum import Enum
 
 from src.domain.entities.credit_request import (
     CreditRequest, CustomerProfile, Gender, MaritalStatus, ProductType
 )
 from src.application.services.credit_analysis_service import CreditAnalysisService
+from src.interfaces.http.dtos.gender_dto import GenderDTO
+from src.interfaces.http.dtos.marital_status_dto import MaritalStatusDTO
+from src.interfaces.http.dtos.product_type_dto import ProductTypeDTO
+from src.interfaces.http.dtos.customer_profile_dto import CustomerProfileDTO
+from src.interfaces.http.dtos.credit_request_dto import CreditRequestDTO
+from src.interfaces.http.dtos.credit_analysis_response_dto import CreditAnalysisResponseDTO
 
-
-# ===== DTOs (Data Transfer Objects) =====
-
-class GenderDTO(str, Enum):
-    MALE = "male"
-    FEMALE = "female"
-    OTHER = "other"
-
-
-class MaritalStatusDTO(str, Enum):
-    SINGLE = "single"
-    MARRIED = "married"
-    DIVORCED = "divorced"
-    WIDOWED = "widowed"
-
-
-class ProductTypeDTO(str, Enum):
-    PERSONAL_LOAN = "personal_loan"
-    CREDIT_CARD = "credit_card"
-    VEHICLE_FINANCING = "vehicle_financing"
-    HOME_EQUITY = "home_equity"
-
-
-class CustomerProfileDTO(BaseModel):
-    """DTO para perfil do cliente"""
-    customer_id: str = Field(..., description="ID único do cliente")
-    name: str = Field(..., description="Nome completo")
-    age: int = Field(..., ge=18, le=100, description="Idade (18-100)")
-    gender: GenderDTO = Field(..., description="Gênero")
-    marital_status: MaritalStatusDTO = Field(..., description="Estado civil")
-    profession: str = Field(..., description="Profissão")
-    monthly_income: float = Field(..., gt=0, description="Renda mensal bruta")
-    net_income: float = Field(..., gt=0, description="Renda líquida")
-    employment_time_months: int = Field(..., ge=0, description="Tempo de emprego em meses")
-    credit_score: int = Field(..., ge=0, le=1000, description="Score de crédito (0-1000)")
-    has_bacen_restrictions: bool = Field(..., description="Possui restrições BACEN")
-    has_bureau_restrictions: bool = Field(..., description="Possui restrições em birô")
-    late_payments_count: int = Field(..., ge=0, description="Quantidade de atrasos")
-    distance_from_branch_km: float = Field(..., ge=0, description="Distância da agência (km)")
-    existing_debt: float = Field(..., ge=0, description="Dívidas existentes")
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "customer_id": "CUST-12345",
-                "name": "João da Silva",
-                "age": 35,
-                "gender": "male",
-                "marital_status": "married",
-                "profession": "Engenheiro",
-                "monthly_income": 8000.00,
-                "net_income": 6500.00,
-                "employment_time_months": 48,
-                "credit_score": 720,
-                "has_bacen_restrictions": False,
-                "has_bureau_restrictions": False,
-                "late_payments_count": 1,
-                "distance_from_branch_km": 15.5,
-                "existing_debt": 1200.00
-            }
-        }
-
-
-class CreditRequestDTO(BaseModel):
-    """DTO para solicitação de crédito"""
-    customer_profile: CustomerProfileDTO
-    product_type: ProductTypeDTO
-    requested_amount: float = Field(..., gt=0, description="Valor solicitado")
-    requested_installments: int = Field(..., gt=0, le=120, description="Número de parcelas")
-    purpose: Optional[str] = Field(None, description="Finalidade do crédito")
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "customer_profile": {
-                    "customer_id": "CUST-12345",
-                    "name": "João da Silva",
-                    "age": 35,
-                    "gender": "male",
-                    "marital_status": "married",
-                    "profession": "Engenheiro",
-                    "monthly_income": 8000.00,
-                    "net_income": 6500.00,
-                    "employment_time_months": 48,
-                    "credit_score": 720,
-                    "has_bacen_restrictions": False,
-                    "has_bureau_restrictions": False,
-                    "late_payments_count": 1,
-                    "distance_from_branch_km": 15.5,
-                    "existing_debt": 1200.00
-                },
-                "product_type": "personal_loan",
-                "requested_amount": 15000.00,
-                "requested_installments": 24,
-                "purpose": "Reforma residencial"
-            }
-        }
-
-
-class CreditAnalysisResponseDTO(BaseModel):
-    """DTO para resposta da análise"""
-    request_id: str
-    customer_id: str
-    analysis_date: str
-    approval_status: str
-    rejection_reason: Optional[str]
-    
-    # Etapa 1: Filtro por Persona
-    persona_filter_passed: bool
-    persona_decision_path: List[str]
-    
-    # Etapa 2: Limite de Crédito
-    credit_limit_amount: float
-    max_installment_value: float
-    max_installments: int
-    interest_rate: float
-    
-    # Etapa 3: Avaliação de Risco
-    risk_level: str
-    risk_score: float
-    risk_description: str
-    
-    # Etapa 4: Decisão Final
-    neural_network_confidence: float
-    
-    # Valores Aprovados (se aplicável)
-    approved_amount: float
-    approved_installments: int
-    monthly_payment: float
-    total_to_pay: float
-    
-    summary: str
-
-
-# ===== Router =====
 
 router = APIRouter(prefix="/api/credit", tags=["Análise de Crédito"])
 
-# Instância do serviço (singleton)
-credit_analysis_service = CreditAnalysisService()
+# Serviço será injetado pelo bootstrap
+credit_analysis_service: CreditAnalysisService | None = None
+
+
+def create_credit_router(service: CreditAnalysisService) -> APIRouter:
+    """Permite injetar o serviço criado no bootstrap da aplicação."""
+    global credit_analysis_service
+    credit_analysis_service = service
+    return router
 
 
 @router.post(
@@ -173,6 +47,9 @@ credit_analysis_service = CreditAnalysisService()
 async def analyze_credit(request: CreditRequestDTO):
     """Analisa solicitação de crédito"""
     try:
+        if credit_analysis_service is None:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="CreditAnalysisService não configurado")
+
         # Converte DTO para entidade de domínio
         customer_profile = CustomerProfile(
             customer_id=request.customer_profile.customer_id,
@@ -180,25 +57,22 @@ async def analyze_credit(request: CreditRequestDTO):
             age=request.customer_profile.age,
             gender=Gender(request.customer_profile.gender.value),
             marital_status=MaritalStatus(request.customer_profile.marital_status.value),
-            profession=request.customer_profile.profession,
-            monthly_income=request.customer_profile.monthly_income,
-            net_income=request.customer_profile.net_income,
-            employment_time_months=request.customer_profile.employment_time_months,
+            income=request.customer_profile.income,
             credit_score=request.customer_profile.credit_score,
-            has_bacen_restrictions=request.customer_profile.has_bacen_restrictions,
-            has_bureau_restrictions=request.customer_profile.has_bureau_restrictions,
-            late_payments_count=request.customer_profile.late_payments_count,
-            distance_from_branch_km=request.customer_profile.distance_from_branch_km,
-            existing_debt=request.customer_profile.existing_debt
+            debt_to_income_ratio=request.customer_profile.debt_to_income_ratio,
+            employment_status=request.customer_profile.employment_status,
+            time_at_job_months=request.customer_profile.time_at_job_months,
+            has_bank_account=request.customer_profile.has_bank_account,
+            has_bacen_restriction=request.customer_profile.has_bacen_restriction,
+            num_credit_inquiries=request.customer_profile.num_credit_inquiries,
+            num_existing_loans=request.customer_profile.num_existing_loans
         )
         
         credit_request = CreditRequest(
-            request_id=f"REQ-{datetime.now().strftime('%Y%m%d%H%M%S')}",
             customer_profile=customer_profile,
             product_type=ProductType(request.product_type.value),
             requested_amount=request.requested_amount,
             requested_installments=request.requested_installments,
-            request_date=datetime.now(),
             purpose=request.purpose
         )
         
@@ -214,8 +88,8 @@ async def analyze_credit(request: CreditRequestDTO):
             rejection_reason=result.rejection_reason.value if result.rejection_reason else None,
             
             # Etapa 1
-            persona_filter_passed=not result.persona_filter.should_reject,
-            persona_decision_path=result.persona_filter.decision_path,
+            persona_filter_passed=result.persona_filter.passed,
+            persona_decision_path=result.persona_filter.decision_path or [],
             
             # Etapa 2
             credit_limit_amount=result.credit_limit.approved_amount if result.credit_limit else 0.0,
@@ -226,7 +100,7 @@ async def analyze_credit(request: CreditRequestDTO):
             # Etapa 3
             risk_level=result.risk_assessment.risk_level.value if result.risk_assessment else "unknown",
             risk_score=result.risk_assessment.risk_score if result.risk_assessment else 0.0,
-            risk_description=result.risk_assessment.get_risk_description() if result.risk_assessment else "",
+            risk_description="",
             
             # Etapa 4
             neural_network_confidence=result.neural_network_confidence or 0.0,

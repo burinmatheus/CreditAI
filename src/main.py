@@ -8,16 +8,14 @@ from src.config import APP_PORT
 # Infrastructure Layer
 from src.infrastructure.adapters.database.postgres_connection import PostgresConnection
 from src.infrastructure.adapters.cache.redis_connection import RedisConnection
-from src.infrastructure.adapters.database.postgres_user_repository import PostgresUserRepository
 from src.infrastructure.adapters.cache.redis_cache_repository import RedisCacheRepository
 
 # Application Layer
 from src.application.services.health_check_service import HealthCheckService
-from src.application.services.user_service import UserService
 from src.application.services.credit_analysis_service import CreditAnalysisService
 
 # Interface Layer
-from src.interfaces.http.flask_app import FastAPIApp
+from src.interfaces.http.fastapi_app import FastAPIApp
 
 
 def bootstrap_application():
@@ -38,7 +36,6 @@ def bootstrap_application():
     redis_conn.initialize()
     
     # Repositories (Adapters)
-    user_repository = PostgresUserRepository(postgres_conn)
     cache_repository = RedisCacheRepository(redis_conn)
     
     print("✓ Infraestrutura inicializada\n")
@@ -47,12 +44,6 @@ def bootstrap_application():
     print("⚙️  Inicializando camada de aplicação...")
     
     health_check_service = HealthCheckService(
-        user_repository=user_repository,
-        cache_repository=cache_repository
-    )
-    
-    user_service = UserService(
-        user_repository=user_repository,
         cache_repository=cache_repository
     )
     
@@ -67,7 +58,6 @@ def bootstrap_application():
     # Criar aplicação FastAPI
     fastapi_app = FastAPIApp(
         health_check_service=health_check_service,
-        user_service=user_service,
         credit_analysis_service=credit_analysis_service
     )
     

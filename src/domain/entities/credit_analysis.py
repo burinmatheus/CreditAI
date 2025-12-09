@@ -25,6 +25,7 @@ class RejectionReason(str, Enum):
     PERSONA_MISMATCH = "persona_mismatch"
     EMPLOYMENT_ISSUES = "employment_issues"
     AGE_RESTRICTION = "age_restriction"
+    PERSONA_FILTER = "persona_filter"
     OTHER = "other"
 
 
@@ -39,16 +40,21 @@ class RiskLevel(str, Enum):
 @dataclass
 class PersonaFilterResult:
     """Resultado do filtro de persona"""
-    persona_type: Optional[str]
+    passed: bool
+    persona: Optional[str]
     confidence: float
-    persona_limits: Optional[Dict[str, float]] = None
+    reason: Optional[str] = None
+    decision_path: Optional[List[str]] = None
 
 
 @dataclass
 class CreditLimit:
     """Limite de crédito calculado"""
-    approved_limit: float
-    calculation_factors: Dict[str, float]
+    approved_amount: float
+    max_installment_value: float
+    max_installments: int
+    interest_rate: float
+    factors: Dict[str, float]
 
 
 @dataclass
@@ -69,44 +75,22 @@ class RiskAssessment:
 @dataclass
 class CreditAnalysisResult:
     """Resultado da análise de crédito"""
-    id: uuid.UUID
-    credit_request_id: uuid.UUID
-    status: ApprovalStatus
-    approved_limit: float
-    risk_score: float
-    rejection_reasons: Optional[List[RejectionReason]] = None
-    persona_type: Optional[str] = None
-    confidence_score: float = 0.0
-    analysis_details: Optional[dict] = None
-    analyzed_at: datetime = None
+    request_id: str
+    customer_id: str
+    analysis_date: datetime
+    persona_filter: PersonaFilterResult
+    credit_limit: Optional[CreditLimit]
+    risk_assessment: Optional[RiskAssessment]
+    approval_status: ApprovalStatus
+    rejection_reason: Optional[RejectionReason] = None
+    approval_confidence: float = 0.0
+    neural_network_probabilities: Optional[Dict[str, float]] = None
+    approved_amount: float = 0.0
+    approved_installments: int = 0
+    approved_interest_rate: float = 0.0
+    monthly_payment: float = 0.0
+    neural_network_confidence: Optional[float] = None
     
     def __post_init__(self):
-        if self.analyzed_at is None:
-            self.analyzed_at = datetime.now()
-        
-        if self.rejection_reasons is None:
-            self.rejection_reasons = []
-    
-    def add_rejection_reason(self, reason: RejectionReason):
-        """Adiciona uma razão de rejeição"""
-        if reason not in self.rejection_reasons:
-            self.rejection_reasons.append(reason)
-    
-    def is_approved(self) -> bool:
-        """Verifica se o crédito foi aprovado"""
-        return self.status == ApprovalStatus.APPROVED
-    
-    def to_dict(self) -> dict:
-        """Converte para dicionário"""
-        return {
-            "id": str(self.id),
-            "credit_request_id": str(self.credit_request_id),
-            "status": self.status.value,
-            "approved_limit": self.approved_limit,
-            "risk_score": self.risk_score,
-            "rejection_reasons": [r.value for r in self.rejection_reasons] if self.rejection_reasons else [],
-            "persona_type": self.persona_type,
-            "confidence_score": self.confidence_score,
-            "analysis_details": self.analysis_details,
-            "analyzed_at": self.analyzed_at.isoformat() if self.analyzed_at else None
-        }
+        if self.neural_network_confidence is None:
+            self.neural_network_confidence = self.approval_confidence

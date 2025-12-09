@@ -2,7 +2,7 @@
 Domain Entity: Credit Request
 Representa uma solicitação de crédito
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 from enum import Enum
@@ -84,12 +84,16 @@ class CustomerProfile:
 @dataclass
 class CreditRequest:
     """Solicitação de crédito completa"""
+    # Campos obrigatórios primeiro (sem defaults) para evitar erro de dataclass
     customer_profile: CustomerProfile
     requested_amount: float
     product_type: ProductType
+
+    # Campos opcionais com defaults
     purpose: Optional[str] = None
     requested_installments: int = 12
     created_at: datetime = None
+    request_id: str = field(default_factory=lambda: f"REQ-{uuid.uuid4()}")
     
     def __post_init__(self):
         if self.created_at is None:
