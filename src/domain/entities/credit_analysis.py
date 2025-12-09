@@ -94,3 +94,28 @@ class CreditAnalysisResult:
     def __post_init__(self):
         if self.neural_network_confidence is None:
             self.neural_network_confidence = self.approval_confidence
+
+    def is_approved(self) -> bool:
+        """Retorna True quando o crédito foi aprovado."""
+        return self.approval_status == ApprovalStatus.APPROVED
+
+    def is_rejected(self) -> bool:
+        """Retorna True quando o crédito foi rejeitado."""
+        return self.approval_status == ApprovalStatus.REJECTED
+
+    def get_rejection_description(self) -> str:
+        """Descrição amigável do motivo da rejeição."""
+        reason_map = {
+            RejectionReason.LOW_INCOME: "Renda insuficiente para o limite solicitado",
+            RejectionReason.HIGH_RISK: "Risco de inadimplência elevado",
+            RejectionReason.INSUFFICIENT_CREDIT_SCORE: "Score de crédito abaixo do mínimo",
+            RejectionReason.HIGH_DEBT_RATIO: "Comprometimento de renda muito alto",
+            RejectionReason.PERSONA_MISMATCH: "Perfil não se enquadra nas personas elegíveis",
+            RejectionReason.EMPLOYMENT_ISSUES: "Vínculo empregatício não atende aos critérios",
+            RejectionReason.AGE_RESTRICTION: "Idade fora da faixa permitida",
+            RejectionReason.PERSONA_FILTER: "Reprovado na triagem inicial de persona",
+            RejectionReason.OTHER: "Reprovado pelos critérios internos da análise",
+        }
+        if self.rejection_reason in reason_map:
+            return reason_map[self.rejection_reason]
+        return "Reprovado pelos critérios de crédito"

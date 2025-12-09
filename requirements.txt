@@ -2,7 +2,6 @@ fastapi
 uvicorn[standard]
 requests
 psycopg2-binary
-redis
 python-dotenv
 numpy
 pydantic
@@ -11,3 +10,4 @@ torchvision
 scikit-fuzzy
 scikit-learn
 packaging
+matplotlib

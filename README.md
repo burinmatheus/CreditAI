@@ -74,7 +74,6 @@ Cliente Solicita Crédito
 │  ┌─────────────────────────────────────────────────────┐  │
 │  │ PostgreSQL: customer_profiles, credit_requests,     │  │
 │  │             credit_analysis_results                 │  │
-│  │ Redis: Cache de resultados                          │  │
 │  └─────────────────────────────────────────────────────┘  │
 └───────────────────────────────────────────────────────────┘
                             ↕
@@ -110,7 +109,6 @@ cd CreditAI
 
 3. O container será iniciado automaticamente com:
    - PostgreSQL (porta 5432)
-   - Redis (porta 16379)
    - Python 3.12
    - Todas as dependências instaladas
 
@@ -124,57 +122,61 @@ cd CreditAI
 ### POST /api/credit/analyze
 Executa análise completa de crédito em 4 etapas.
 
-**Request Body:**
+**Request Body:** (usa DTO `CreditRequestDTO`)
 ```json
 {
   "customer_profile": {
+    "customer_id": "CUST-001",
+    "name": "João da Silva",
     "age": 35,
     "gender": "M",
     "marital_status": "married",
-    "income": 8500.0,
-    "credit_score": 780,
     "employment_status": "employed",
+    "income": 8500.0,
+    "debt_to_income_ratio": 0.25,
+    "credit_score": 780,
     "time_at_job_months": 48,
     "has_bank_account": true,
-    "debt_to_income_ratio": 0.25,
-    "num_credit_inquiries": 2,
     "has_bacen_restriction": false,
+    "num_credit_inquiries": 2,
     "num_existing_loans": 1
   },
-  "credit_request": {
-    "requested_amount": 25000.0,
-    "product_type": "personal_loan",
-    "purpose": "home_improvement"
-  }
+  "product_type": "personal_loan",
+  "requested_amount": 25000.0,
+  "requested_installments": 36,
+  "purpose": "home_improvement"
 }
 ```
 
-**Response:**
+**Response:** (DTO `CreditAnalysisResponseDTO`)
 ```json
 {
-  "stage_1_persona_filter": {
-    "passed": true,
-    "rejection_reason": null,
-    "checked_rules": ["age", "credit_score", "employment", "bacen", "income", "debt_ratio"]
-  },
-  "stage_2_credit_limit": {
-    "approved_limit": 25000.0,
-    "max_installments": 48,
-    "monthly_installment": 687.5,
-    "interest_rate": 0.0299,
-    "product_type": "personal_loan"
-  },
-  "stage_3_risk_assessment": {
-    "risk_level": "LOW",
-    "risk_score": 0.23,
-    "risk_factors": {...}
-  },
-  "stage_4_approval_decision": {
-    "final_status": "APPROVED",
-    "confidence": 0.92,
-    "reasons": ["Excellent credit profile", "Low risk assessment"]
-  },
-  "summary": "Credit analysis completed successfully..."
+  "request_id": "REQ-123e4567-e89b-12d3-a456-426614174000",
+  "customer_id": "CUST-001",
+  "analysis_date": "2025-12-09T12:30:15.123Z",
+  "approval_status": "APPROVED",
+  "rejection_reason": null,
+
+  "persona_filter_passed": true,
+  "persona_decision_path": ["age_ok", "bacen_ok", "score_ok"],
+
+  "credit_limit_amount": 25000.0,
+  "max_installment_value": 850.0,
+  "max_installments": 36,
+  "interest_rate": 0.025,
+
+  "risk_level": "LOW",
+  "risk_score": 2.1,
+  "risk_description": "Low default risk",
+
+  "neural_network_confidence": 0.91,
+
+  "approved_amount": 25000.0,
+  "approved_installments": 36,
+  "monthly_payment": 850.0,
+  "total_to_pay": 30600.0,
+
+  "summary": "Approved after DFS, BFS, fuzzy risk and NN decision"
 }
 ```
 
@@ -186,11 +188,13 @@ Lista produtos de crédito disponíveis.
 {
   "products": [
     {
-      "product_type": "personal_loan",
-      "max_amount": 100000.0,
+      "type": "personal_loan",
+      "name": "Personal Loan",
+      "min_amount": 1000.0,
+      "max_amount": 50000.0,
       "max_installments": 48,
-      "interest_rate": 0.0299,
-      "description": "Empréstimo pessoal com taxas competitivas"
+      "base_rate": 0.025,
+      "base_rate_percent": 2.5
     },
     ...
   ]
@@ -357,12 +361,11 @@ CreditAI/
 │   │
 │   ├── infrastructure/              # Camada de Infraestrutura
 │   │   └── adapters/
-│   │       ├── database/            # PostgreSQL
-│   │       └── cache/               # Redis
+│   │       └── database/            # PostgreSQL
 │   │
 │   ├── interfaces/                  # Camada de Interface
 │   │   └── http/
-│   │       ├── flask_app.py         # FastAPI App
+│   │       ├── fastapi_app.py       # FastAPI App
 │   │       └── credit_routes.py     # Credit endpoints
 │   │
 │   └── main.py                      # Bootstrap & DI
@@ -410,7 +413,6 @@ CreditAI/
 - **NumPy** - Computação numérica (rede neural)
 - **Pydantic** - Validação de dados
 - **PostgreSQL 15** - Banco de dados relacional
-- **Redis 7** - Cache de alta performance
 - **Docker & Docker Compose** - Containerização
 - **Uvicorn** - Servidor ASGI
 
@@ -458,36 +460,10 @@ export POSTGRES_PORT=5432
 export POSTGRES_USER=creditai
 export POSTGRES_PASSWORD=creditai_dev
 export POSTGRES_DB=creditai_db
-export REDIS_HOST=localhost
-export REDIS_PORT=6379
 
 # Executar aplicação
 python -m src.main
 ```
-
-### Executando testes
-
-```bash
-# Instalar dependências de teste
-pip install pytest pytest-cov
-
-# Executar testes
-pytest
-
-# Com cobertura
-pytest --cov=src --cov-report=html
-```
-
-## 📈 Próximos Passos
-
-- [ ] Treinamento da rede neural com dados reais
-- [ ] Implementar sistema de logging estruturado
-- [ ] Adicionar autenticação JWT
-- [ ] Criar dashboard de análises
-- [ ] Implementar testes automatizados (pytest)
-- [ ] Adicionar monitoramento (Prometheus/Grafana)
-- [ ] Otimizar regras fuzzy com feedback de produção
-- [ ] Implementar versionamento de modelos
 
 ## 📝 Licença
 

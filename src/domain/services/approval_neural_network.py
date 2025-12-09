@@ -1,7 +1,10 @@
 """
 Etapa 4: Decisão de Aprovação usando Rede Neural (PyTorch)
+Inclui treinamento (backprop) com geração de dados sintéticos e salvamento/carregamento de pesos.
 """
-from typing import Tuple, List
+from pathlib import Path
+from typing import Tuple, List, Dict
+import json
 import numpy as np
 import torch
 import torch.nn as nn
@@ -60,6 +63,17 @@ class ApprovalNeuralNetwork:
     def __init__(self):
         self.model = ApprovalMLP()
         self.model.eval()
+        torch.set_grad_enabled(False)
+
+        # Diretórios para dados e pesos
+        self.data_dir = Path("/workspaces/CreditAI/data/training")
+        self.model_dir = Path("/workspaces/CreditAI/models")
+        self.model_path = self.model_dir / "approval_mlp.pt"
+
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.model_dir.mkdir(parents=True, exist_ok=True)
+
+        self._load_weights_if_available()
 
     def decide_approval(
         self,
@@ -93,6 +107,184 @@ class ApprovalNeuralNetwork:
         }
         return status, confidence, reasons, prob_dict
 
+    # === Treinamento com backprop ===
+    def train_model(
+        self,
+        num_samples: int = 500,
+        epochs: int = 30,
+        lr: float = 1e-3,
+        batch_size: int = 64,
+    ) -> Dict[str, float]:
+        """Gera dados sintéticos, treina via backprop, salva pesos e recarrega em memória."""
+        torch.set_grad_enabled(True)
+        self.model.train()
+
+        features, labels = self._generate_synthetic_dataset(num_samples)
+        dataset = torch.utils.data.TensorDataset(features, labels)
+        loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+
+        opt = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=1e-4)
+        criterion = nn.CrossEntropyLoss()
+
+        for epoch in range(epochs):
+            running = 0.0
+            for xb, yb in loader:
+                opt.zero_grad()
+                preds = self.model(xb)
+                loss = criterion(preds, yb)
+                loss.backward()
+                opt.step()
+                running += loss.item() * xb.size(0)
+            avg_loss = running / len(dataset)
+            if epoch % max(1, epochs // 5) == 0:
+                print(f"[RNA] epoch {epoch+1}/{epochs} loss={avg_loss:.4f}")
+
+        # Salvar dados e pesos
+        np.savez(self.data_dir / "synthetic_training.npz", features=features.numpy(), labels=labels.numpy())
+        torch.save(self.model.state_dict(), self.model_path)
+
+        # Recarregar pesos em modo eval
+        self._load_weights_if_available()
+
+        torch.set_grad_enabled(False)
+        return {"loss": float(avg_loss)}
+
+    def generate_dataset_jsonl(self, num_samples: int = 1000, filename: str | None = None) -> Path:
+        """Gera dados sintéticos e salva em JSONL para inspeção/treino offline."""
+        features, labels = self._generate_synthetic_dataset(num_samples)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        fname = filename or "synthetic_training.jsonl"
+        jsonl_path = self.data_dir / fname
+
+        with jsonl_path.open("w", encoding="utf-8") as f:
+            for i in range(features.shape[0]):
+                row = {"features": features[i].tolist(), "label": int(labels[i].item())}
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+        return jsonl_path
+
+    def train_from_jsonl(
+        self,
+        jsonl_path: Path,
+        epochs: int = 30,
+        lr: float = 1e-3,
+        batch_size: int = 64,
+    ) -> Dict[str, float]:
+        """Treina lendo features/labels de um JSONL."""
+        records = []
+        with jsonl_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                obj = json.loads(line)
+                records.append((obj["features"], obj["label"]))
+
+        feats = torch.tensor([r[0] for r in records], dtype=torch.float32)
+        labs = torch.tensor([r[1] for r in records], dtype=torch.long)
+        dataset = torch.utils.data.TensorDataset(feats, labs)
+        loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+
+        torch.set_grad_enabled(True)
+        self.model.train()
+        opt = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=1e-4)
+        criterion = nn.CrossEntropyLoss()
+
+        for epoch in range(epochs):
+            running = 0.0
+            for xb, yb in loader:
+                opt.zero_grad()
+                preds = self.model(xb)
+                loss = criterion(preds, yb)
+                loss.backward()
+                opt.step()
+                running += loss.item() * xb.size(0)
+            avg_loss = running / len(dataset)
+            if epoch % max(1, epochs // 5) == 0:
+                print(f"[RNA] (jsonl) epoch {epoch+1}/{epochs} loss={avg_loss:.4f}")
+
+        torch.save(self.model.state_dict(), self.model_path)
+        self._load_weights_if_available()
+        torch.set_grad_enabled(False)
+        return {"loss": float(avg_loss), "samples": len(dataset)}
+
+    def _load_weights_if_available(self) -> None:
+        """Carrega pesos salvos caso existam."""
+        if self.model_path.exists():
+            state = torch.load(self.model_path, map_location=torch.device("cpu"))
+            self.model.load_state_dict(state)
+            self.model.eval()
+            torch.set_grad_enabled(False)
+            print(f"[RNA] Pesos carregados de {self.model_path}")
+
+    def _generate_synthetic_dataset(self, n: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Gera dados sintéticos com rótulos baseados em regras de negócio simples."""
+        rng = np.random.default_rng()
+
+        ages = rng.integers(18, 75, size=n)
+        scores = rng.integers(300, 901, size=n)
+        incomes = rng.uniform(800, 50000, size=n)
+        debt_ratios = rng.uniform(0.0, 1.0, size=n)
+        employment = rng.choice([0.0, 1.0], size=n, p=[0.2, 0.8])
+        bank = rng.choice([0.0, 1.0], size=n, p=[0.1, 0.9])
+        inquiries = rng.integers(0, 12, size=n)
+        loans = rng.integers(0, 6, size=n)
+        risk_scores = rng.uniform(0.0, 1.0, size=n)
+        limit_ratios = rng.uniform(0.3, 1.2, size=n)
+
+        age_norm = (ages - 18) / (75 - 18)
+        score_norm = scores / 1000.0
+        income_norm = np.minimum(1.0, np.log1p(incomes) / np.log1p(50000))
+        inquiries_norm = np.minimum(1.0, inquiries / 10.0)
+        loans_norm = np.minimum(1.0, loans / 5.0)
+        limit_ratio_clamped = np.minimum(1.0, np.maximum(0.0, limit_ratios))
+
+        features = np.stack([
+            age_norm,
+            score_norm,
+            income_norm,
+            debt_ratios,
+            employment,
+            bank,
+            inquiries_norm,
+            loans_norm,
+            risk_scores,
+            limit_ratio_clamped,
+        ], axis=1).astype(np.float32)
+
+        labels = self._label_from_rules(scores, risk_scores, debt_ratios, limit_ratios, employment)
+
+        return torch.tensor(features, dtype=torch.float32), torch.tensor(labels, dtype=torch.long)
+
+    def _label_from_rules(
+        self,
+        scores: np.ndarray,
+        risk_scores: np.ndarray,
+        debt_ratios: np.ndarray,
+        limit_ratios: np.ndarray,
+        employment: np.ndarray,
+    ) -> np.ndarray:
+        """Rules → class: 0 approved, 1 pending, 2 rejected."""
+        labels = np.zeros_like(scores, dtype=np.int64)
+
+        # Rejection conditions
+        reject_mask = (
+            (risk_scores > 0.75)
+            | (scores < 500)
+            | (debt_ratios > 0.55)
+        )
+        labels[reject_mask] = 2
+
+        # Pending conditions (only if not already rejected)
+        pending_mask = (
+            (labels == 0)
+            & (
+                (risk_scores >= 0.45)
+                | (limit_ratios > 0.95)
+                | (employment == 0.0)
+            )
+        )
+        labels[pending_mask] = 1
+
+        return labels
+
     def _prepare_inputs(
         self,
         profile: CustomerProfile,
@@ -101,7 +293,7 @@ class ApprovalNeuralNetwork:
         risk_assessment: RiskAssessment,
     ) -> torch.Tensor:
         age_norm = (profile.age - 18) / (75 - 18)
-        score_norm = (profile.credit_score - 300) / (900 - 300)
+        score_norm = profile.credit_score / 1000.0
         income_norm = min(1.0, np.log1p(profile.income) / np.log1p(50000))
         debt_ratio = profile.debt_to_income_ratio
         employment_binary = 1.0 if profile.employment_status in ["employed", "self_employed"] else 0.0

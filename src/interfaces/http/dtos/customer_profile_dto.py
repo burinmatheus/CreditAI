@@ -27,7 +27,7 @@ class CustomerProfileDTO(BaseModel):
                 "customer_id": "CUST-12345",
                 "name": "João da Silva",
                 "age": 35,
-                "gender": "male",
+                "gender": "M",
                 "marital_status": "married",
                 "employment_status": "employed",
                 "income": 8000.00,

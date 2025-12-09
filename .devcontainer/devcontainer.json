@@ -3,7 +3,7 @@
   "dockerComposeFile": "docker-compose.yml",
   "service": "app",
   "workspaceFolder": "/workspaces/CreditAI",
-  "forwardPorts": [8000, 5432, 6379],
+  "forwardPorts": [8000, 5432],
   "portsAttributes": {
     "8000": {
       "label": "Application",
@@ -11,10 +11,6 @@
     },
     "5432": {
       "label": "PostgreSQL",
-      "onAutoForward": "silent"
-    },
-    "6379": {
-      "label": "Redis",
       "onAutoForward": "silent"
     }
   },

@@ -10,7 +10,7 @@ from typing import Dict
 class HealthStatus:
     """Entidade que representa o status de saúde da aplicação"""
     status: str  # "healthy" ou "unhealthy"
-    services: Dict[str, str]  # {"postgres": "up", "redis": "down"}
+    services: Dict[str, str]  # {"postgres": "up"}
 
     @property
     def is_healthy(self) -> bool:

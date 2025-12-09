@@ -2,6 +2,6 @@ from enum import Enum
 
 
 class GenderDTO(str, Enum):
-    MALE = "male"
-    FEMALE = "female"
-    OTHER = "other"
+    MALE = "M"
+    FEMALE = "F"
+    OTHER = "O"

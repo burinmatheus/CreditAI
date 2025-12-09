@@ -12,7 +12,6 @@ from src.interfaces.http.credit_routes import create_credit_router
 # Pydantic Models (DTOs)
 class HealthServiceStatus(BaseModel):
     postgres: str = Field(..., example="up", description="Status do PostgreSQL")
-    redis: str = Field(..., example="up", description="Status do Redis")
 
 
 class HealthResponse(BaseModel):
@@ -24,8 +23,7 @@ class HealthResponse(BaseModel):
             "example": {
                 "status": "healthy",
                 "services": {
-                    "postgres": "up",
-                    "redis": "up"
+                    "postgres": "up"
                 }
             }
         }
@@ -81,7 +79,7 @@ class FastAPIApp:
             response_model=HealthResponse,
             tags=["Health"],
             summary="Health Check",
-            description="Verifica o status de saúde da aplicação e seus serviços (PostgreSQL e Redis)",
+            description="Verifica o status de saúde da aplicação e seus serviços (PostgreSQL)",
         )
         async def health_check():
             health_status = self.health_check_service.get_health_status()
@@ -90,7 +88,6 @@ class FastAPIApp:
                 status=health_status.status,
                 services=HealthServiceStatus(
                     postgres=health_status.services["postgres"],
-                    redis=health_status.services["redis"],
                 ),
             )
 

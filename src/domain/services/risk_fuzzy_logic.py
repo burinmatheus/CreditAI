@@ -2,9 +2,16 @@
 Etapa 3: Avaliação de Risco com Lógica Fuzzy usando scikit-fuzzy
 """
 from typing import Dict
+import uuid
 import numpy as np
 import skfuzzy as fuzz
 from skfuzzy import control as ctrl
+import matplotlib
+
+# Backend Agg evita necessidade de display em ambiente headless
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from pathlib import Path
 
 from src.domain.entities.credit_request import CustomerProfile
 from src.domain.entities.credit_analysis import RiskAssessment, RiskLevel
@@ -117,6 +124,9 @@ class RiskFuzzyLogic:
         main_factors = [k for k, v in fuzzy_memberships.items() if v >= 0.5]
         confidence = max(fuzzy_memberships.values())
 
+        # Gera gráfico da saída fuzzy com marcação do risk_score
+        self._plot_risk_output(risk_score)
+
         return RiskAssessment(
             risk_level=risk_level,
             risk_score=risk_score,
@@ -125,3 +135,29 @@ class RiskFuzzyLogic:
             confidence_score=confidence,
             fuzzy_memberships=fuzzy_memberships,
         )
+
+    def _plot_risk_output(self, risk_score: float) -> None:
+        """Plota as curvas de risco e destaca o score calculado; salva na raiz do projeto."""
+        fig, ax = plt.subplots(figsize=(6, 4))
+        x = self.risk.universe
+
+        ax.plot(x, self.risk["low"].mf, label="Baixo", color="#2ca02c")
+        ax.plot(x, self.risk["med"].mf, label="Médio", color="#ff7f0e")
+        ax.plot(x, self.risk["high"].mf, label="Alto", color="#d62728")
+
+        ax.axvline(risk_score, color="#1f77b4", linestyle="--", linewidth=2, label=f"Score={risk_score:.3f}")
+        ax.set_title("Saída Fuzzy de Risco")
+        ax.set_xlabel("Score de Risco")
+        ax.set_ylabel("Pertinência")
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1.05)
+        ax.legend(loc="upper right")
+        ax.grid(True, linestyle=":", alpha=0.5)
+
+        out_dir = Path("/workspaces/CreditAI/plots")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        filename = out_dir / f"risk_fuzzy_{uuid.uuid4().hex[:8]}.png"
+        fig.tight_layout()
+        fig.savefig(filename)
+        plt.close(fig)
+        print(f"[Fuzzy] Gráfico de risco salvo em {filename}")

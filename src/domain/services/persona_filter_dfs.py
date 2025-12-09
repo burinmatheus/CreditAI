@@ -2,7 +2,7 @@
 Domain Service: Persona Filter (DFS - Depth First Search)
 Identifica o perfil do cliente usando busca em profundidade
 """
-from typing import Dict, Optional
+from typing import Dict, Optional, Callable, List, Tuple
 from src.domain.entities.credit_request import CreditRequest
 
 
@@ -13,22 +13,23 @@ class PersonaFilterDFS:
     """
     
     def __init__(self):
-        self.personas = {
-            "premium": {
-                "min_income": 10000,
-                "min_credit_score": 750,
-                "employment": ["employed", "self_employed"]
-            },
-            "standard": {
-                "min_income": 3000,
-                "min_credit_score": 650,
-                "employment": ["employed", "self_employed"]
-            },
-            "basic": {
-                "min_income": 1500,
-                "min_credit_score": 550,
-                "employment": ["employed", "self_employed", "retired"]
-            }
+        # Árvore de decisão por persona. Cada nível é explorado em profundidade.
+        self.persona_rules: Dict[str, List[Tuple[str, Callable]]] = {
+            "premium": [
+                ("Renda >= 10000", lambda p: p.income >= 10000),
+                ("Score >= 750", lambda p: p.credit_score is not None and p.credit_score >= 750),
+                ("Emprego qualificado", lambda p: p.employment_status in ["employed", "self_employed"]),
+            ],
+            "standard": [
+                ("Renda >= 3000", lambda p: p.income >= 3000),
+                ("Score >= 650", lambda p: p.credit_score is not None and p.credit_score >= 650),
+                ("Emprego qualificado", lambda p: p.employment_status in ["employed", "self_employed"]),
+            ],
+            "basic": [
+                ("Renda >= 1500", lambda p: p.income >= 1500),
+                ("Score >= 550", lambda p: p.credit_score is not None and p.credit_score >= 550),
+                ("Emprego qualificado ou aposentado", lambda p: p.employment_status in ["employed", "self_employed", "retired"]),
+            ],
         }
     
     def identify_persona(self, request: CreditRequest) -> tuple[Optional[str], float]:
@@ -38,53 +39,62 @@ class PersonaFilterDFS:
         Returns:
             tuple[persona, confidence]: Nome da persona e confiança da classificação
         """
-        # DFS através das personas (da mais restritiva para menos)
+        profile = request.customer_profile
+
+        # Busca em profundidade: percorre cada persona avaliando suas regras em sequência
         for persona_name in ["premium", "standard", "basic"]:
-            persona_rules = self.personas[persona_name]
-            
-            if self._matches_persona(request, persona_rules):
-                confidence = self._calculate_confidence(request, persona_rules)
+            rules = self.persona_rules[persona_name]
+            matched, _ = self._dfs_rules(rules, profile, 0, [])
+            if matched:
+                confidence = self._calculate_confidence(profile, persona_name)
                 return persona_name, confidence
         
         # Se não se encaixar em nenhuma persona
         return None, 0.0
     
-    def _matches_persona(self, request: CreditRequest, rules: Dict) -> bool:
-        """Verifica se o request atende aos critérios da persona"""
-        profile = request.customer_profile
+    def _dfs_rules(
+        self,
+        rules: List[Tuple[str, Callable]],
+        profile,
+        idx: int,
+        path: List[str],
+    ) -> tuple[bool, List[str]]:
+        """Percorre recursivamente as regras; para ao primeiro fracasso."""
+        if idx >= len(rules):
+            return True, path
 
-        if profile.income < rules["min_income"]:
-            return False
-        
-        if profile.credit_score and profile.credit_score < rules["min_credit_score"]:
-            return False
-        
-        if profile.employment_status not in rules["employment"]:
-            return False
-        
-        return True
-    
-    def _calculate_confidence(self, request: CreditRequest, rules: Dict) -> float:
-        """Calcula a confiança da classificação (0-1)"""
+        desc, predicate = rules[idx]
+        current_path = path + [desc]
+        if not predicate(profile):
+            return False, current_path
+
+        return self._dfs_rules(rules, profile, idx + 1, current_path)
+
+    def _calculate_confidence(self, profile, persona_name: str) -> float:
+        """Calcula confiança com base nas regras satisfeitas."""
+        baseline = {
+            "premium": {"min_income": 10000, "min_credit_score": 750},
+            "standard": {"min_income": 3000, "min_credit_score": 650},
+            "basic": {"min_income": 1500, "min_credit_score": 550},
+        }
+
+        rules = baseline[persona_name]
         confidence = 0.0
-        
-        # Confiança baseada na renda (até 0.4)
+
         income_ratio = profile.income / (rules["min_income"] * 2)
         confidence += min(income_ratio, 0.4)
-        
-        # Confiança baseada no credit score (até 0.4)
+
         if profile.credit_score:
-            score_ratio = profile.credit_score / 850  # Score máximo
+            score_ratio = profile.credit_score / 850
             confidence += min(score_ratio * 0.4, 0.4)
         else:
-            confidence += 0.2  # Confiança parcial se não tiver score
-        
-        # Confiança baseada no emprego (até 0.2)
+            confidence += 0.2
+
         if profile.employment_status in ["employed", "self_employed"]:
             confidence += 0.2
         else:
             confidence += 0.1
-        
+
         return min(confidence, 1.0)
     
     def get_persona_limits(self, persona: str) -> Dict[str, float]:

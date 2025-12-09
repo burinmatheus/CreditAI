@@ -7,8 +7,6 @@ from src.config import APP_PORT
 
 # Infrastructure Layer
 from src.infrastructure.adapters.database.postgres_connection import PostgresConnection
-from src.infrastructure.adapters.cache.redis_connection import RedisConnection
-from src.infrastructure.adapters.cache.redis_cache_repository import RedisCacheRepository
 
 # Application Layer
 from src.application.services.health_check_service import HealthCheckService
@@ -32,20 +30,12 @@ def bootstrap_application():
     postgres_conn = PostgresConnection()
     postgres_conn.initialize()
     
-    redis_conn = RedisConnection()
-    redis_conn.initialize()
-    
-    # Repositories (Adapters)
-    cache_repository = RedisCacheRepository(redis_conn)
-    
     print("✓ Infraestrutura inicializada\n")
 
     # ===== APPLICATION LAYER =====
     print("⚙️  Inicializando camada de aplicação...")
     
-    health_check_service = HealthCheckService(
-        cache_repository=cache_repository
-    )
+    health_check_service = HealthCheckService()
     
     # Serviço de Análise de Crédito com IA (4 etapas)
     credit_analysis_service = CreditAnalysisService()
@@ -63,13 +53,13 @@ def bootstrap_application():
     
     print("✓ Interface FastAPI + OpenAPI configurada\n")
 
-    return postgres_conn, redis_conn, fastapi_app
+    return postgres_conn, fastapi_app
 
 
 def main():
     """Ponto de entrada principal da aplicação"""
     # Bootstrap com injeção de dependências
-    postgres_conn, redis_conn, fastapi_app = bootstrap_application()
+    postgres_conn, fastapi_app = bootstrap_application()
 
     # Mensagens de inicialização
     print("=" * 70)
@@ -92,7 +82,6 @@ def main():
     except KeyboardInterrupt:
         print("\n\n🛑 Encerrando servidor...")
         postgres_conn.close_all()
-        redis_conn.close()
         print("✓ Aplicação encerrada com sucesso")
 
 
