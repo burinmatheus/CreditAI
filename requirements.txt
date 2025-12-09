@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+requests
+psycopg2-binary
+redis
+python-dotenv
+numpy
+pydantic
+torch
+torchvision
+scikit-fuzzy
+scikit-learn
+packaging
