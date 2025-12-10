@@ -39,8 +39,8 @@ class PersonaFilterDFS:
         basic_leaf = DecisionNode("Basic Persona", persona="basic")
 
         basic_score = DecisionNode(
-            "Score >= 550?",
-            condition=lambda p: p.credit_score is not None and p.credit_score >= 550,
+            "Score >= 0?",
+            condition=lambda p: p.credit_score is not None and p.credit_score >= 0,
             true_branch=basic_leaf,
             false_branch=None,
         )
@@ -53,8 +53,8 @@ class PersonaFilterDFS:
         )
 
         basic_income = DecisionNode(
-            "Renda >= 1500?",
-            condition=lambda p: p.income >= 1500,
+            "Renda >= 0?",
+            condition=lambda p: p.income >= 0,
             true_branch=basic_employment,
             false_branch=None
         )
@@ -63,8 +63,8 @@ class PersonaFilterDFS:
         standard_leaf = DecisionNode("Standard Persona", persona="standard")
 
         standard_score = DecisionNode(
-            "Score >= 650?",
-            condition=lambda p: p.credit_score is not None and p.credit_score >= 650,
+            "Score >= 550?",
+            condition=lambda p: p.credit_score is not None and p.credit_score >= 550,
             true_branch=standard_leaf,
             false_branch=None,
         )
@@ -77,8 +77,8 @@ class PersonaFilterDFS:
         )
 
         standard_income = DecisionNode(
-            "Renda >= 3000?",
-            condition=lambda p: p.income >= 3000,
+            "Renda >= 2000?",
+            condition=lambda p: p.income >= 2000,
             true_branch=standard_employment,
             false_branch=basic_income,  # fallback
         )
@@ -142,8 +142,8 @@ class PersonaFilterDFS:
 
         baseline = {
             "premium": {"min_income": 10000, "min_credit_score": 750},
-            "standard": {"min_income": 3000, "min_credit_score": 650},
-            "basic": {"min_income": 1500, "min_credit_score": 550},
+            "standard": {"min_income": 2000, "min_credit_score": 550},
+            "basic": {"min_income": 0, "min_credit_score": 0},
         }
 
         rules = baseline[persona_name]
