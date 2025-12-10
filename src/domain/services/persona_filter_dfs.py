@@ -1,77 +1,145 @@
-"""
-Domain Service: Persona Filter (DFS - Depth First Search)
-Identifica o perfil do cliente usando busca em profundidade
-"""
-from typing import Dict, Optional, Callable, List, Tuple
+from typing import Callable, Optional, Dict, Any
 from src.domain.entities.credit_request import CreditRequest
+
+
+class DecisionNode:
+    """
+    Nó de árvore de decisão.
+    """
+    def __init__(
+        self,
+        description: str,
+        condition: Optional[Callable[[Any], bool]] = None,
+        true_branch: Optional["DecisionNode"] = None,
+        false_branch: Optional["DecisionNode"] = None,
+        persona: Optional[str] = None
+    ):
+        self.description = description
+        self.condition = condition
+        self.true_branch = true_branch
+        self.false_branch = false_branch
+        self.persona = persona
+
+    def is_leaf(self) -> bool:
+        return self.persona is not None
 
 
 class PersonaFilterDFS:
     """
-    Filtro de Persona usando DFS
-    Classifica clientes em diferentes personas baseado em características
+    Filtro de persona com Árvore de Decisão usando DFS.
     """
-    
+
     def __init__(self):
-        # Árvore de decisão por persona. Cada nível é explorado em profundidade.
-        self.persona_rules: Dict[str, List[Tuple[str, Callable]]] = {
-            "premium": [
-                ("Renda >= 10000", lambda p: p.income >= 10000),
-                ("Score >= 750", lambda p: p.credit_score is not None and p.credit_score >= 750),
-                ("Emprego qualificado", lambda p: p.employment_status in ["employed", "self_employed"]),
-            ],
-            "standard": [
-                ("Renda >= 3000", lambda p: p.income >= 3000),
-                ("Score >= 650", lambda p: p.credit_score is not None and p.credit_score >= 650),
-                ("Emprego qualificado", lambda p: p.employment_status in ["employed", "self_employed"]),
-            ],
-            "basic": [
-                ("Renda >= 1500", lambda p: p.income >= 1500),
-                ("Score >= 550", lambda p: p.credit_score is not None and p.credit_score >= 550),
-                ("Emprego qualificado ou aposentado", lambda p: p.employment_status in ["employed", "self_employed", "retired"]),
-            ],
-        }
-    
+        self.root = self._build_tree()
+
+    def _build_tree(self) -> DecisionNode:
+        """Constrói a árvore de decisão completa."""
+
+        # --- BASIC branch ---
+        basic_leaf = DecisionNode("Basic Persona", persona="basic")
+
+        basic_score = DecisionNode(
+            "Score >= 550?",
+            condition=lambda p: p.credit_score is not None and p.credit_score >= 550,
+            true_branch=basic_leaf,
+            false_branch=None,
+        )
+
+        basic_employment = DecisionNode(
+            "Emprego qualificado ou aposentado?",
+            condition=lambda p: p.employment_status in ["employed", "self_employed", "retired"],
+            true_branch=basic_score,
+            false_branch=None
+        )
+
+        basic_income = DecisionNode(
+            "Renda >= 1500?",
+            condition=lambda p: p.income >= 1500,
+            true_branch=basic_employment,
+            false_branch=None
+        )
+
+        # --- STANDARD branch ---
+        standard_leaf = DecisionNode("Standard Persona", persona="standard")
+
+        standard_score = DecisionNode(
+            "Score >= 650?",
+            condition=lambda p: p.credit_score is not None and p.credit_score >= 650,
+            true_branch=standard_leaf,
+            false_branch=None,
+        )
+
+        standard_employment = DecisionNode(
+            "Emprego qualificado?",
+            condition=lambda p: p.employment_status in ["employed", "self_employed"],
+            true_branch=standard_score,
+            false_branch=None,
+        )
+
+        standard_income = DecisionNode(
+            "Renda >= 3000?",
+            condition=lambda p: p.income >= 3000,
+            true_branch=standard_employment,
+            false_branch=basic_income,  # fallback
+        )
+
+        # --- PREMIUM branch ---
+        premium_leaf = DecisionNode("Premium Persona", persona="premium")
+
+        premium_score = DecisionNode(
+            "Score >= 750?",
+            condition=lambda p: p.credit_score is not None and p.credit_score >= 750,
+            true_branch=premium_leaf,
+            false_branch=standard_income,
+        )
+
+        premium_employment = DecisionNode(
+            "Emprego qualificado?",
+            condition=lambda p: p.employment_status in ["employed", "self_employed"],
+            true_branch=premium_score,
+            false_branch=standard_income
+        )
+
+        premium_income = DecisionNode(
+            "Renda >= 10000?",
+            condition=lambda p: p.income >= 10000,
+            true_branch=premium_employment,
+            false_branch=standard_income
+        )
+
+        return premium_income
+
+    # ---------------- DFS REAL ---------------- #
+
     def identify_persona(self, request: CreditRequest) -> tuple[Optional[str], float]:
         """
-        Identifica a persona do cliente usando DFS
-        
-        Returns:
-            tuple[persona, confidence]: Nome da persona e confiança da classificação
+        Executa DFS na árvore de decisão para encontrar a persona.
         """
         profile = request.customer_profile
+        persona = self._dfs(self.root, profile)
+        confidence = self._calculate_confidence(profile, persona) if persona else 0.0
+        return persona, confidence
 
-        # Busca em profundidade: percorre cada persona avaliando suas regras em sequência
-        for persona_name in ["premium", "standard", "basic"]:
-            rules = self.persona_rules[persona_name]
-            matched, _ = self._dfs_rules(rules, profile, 0, [])
-            if matched:
-                confidence = self._calculate_confidence(profile, persona_name)
-                return persona_name, confidence
-        
-        # Se não se encaixar em nenhuma persona
-        return None, 0.0
-    
-    def _dfs_rules(
-        self,
-        rules: List[Tuple[str, Callable]],
-        profile,
-        idx: int,
-        path: List[str],
-    ) -> tuple[bool, List[str]]:
-        """Percorre recursivamente as regras; para ao primeiro fracasso."""
-        if idx >= len(rules):
-            return True, path
+    def _dfs(self, node: DecisionNode, profile) -> Optional[str]:
+        """
+        DFS real: percorre árvore de decisão em profundidade.
+        """
+        if node.is_leaf():
+            return node.persona
 
-        desc, predicate = rules[idx]
-        current_path = path + [desc]
-        if not predicate(profile):
-            return False, current_path
+        # Caso a condição seja falsa e exista um false_branch, seguimos por ele
+        if not node.condition(profile):
+            return self._dfs(node.false_branch, profile) if node.false_branch else None
 
-        return self._dfs_rules(rules, profile, idx + 1, current_path)
+        # Caso verdadeiro, seguimos o true_branch
+        return self._dfs(node.true_branch, profile)
 
-    def _calculate_confidence(self, profile, persona_name: str) -> float:
-        """Calcula confiança com base nas regras satisfeitas."""
+    # ------------------------------------------ #
+
+    def _calculate_confidence(self, profile, persona_name: Optional[str]) -> float:
+        if persona_name is None:
+            return 0.0
+
         baseline = {
             "premium": {"min_income": 10000, "min_credit_score": 750},
             "standard": {"min_income": 3000, "min_credit_score": 650},
@@ -96,25 +164,11 @@ class PersonaFilterDFS:
             confidence += 0.1
 
         return min(confidence, 1.0)
-    
+
     def get_persona_limits(self, persona: str) -> Dict[str, float]:
-        """Retorna os limites de crédito para cada persona"""
         limits = {
-            "premium": {
-                "max_limit": 100000,
-                "min_limit": 10000,
-                "income_multiplier": 5.0
-            },
-            "standard": {
-                "max_limit": 50000,
-                "min_limit": 3000,
-                "income_multiplier": 3.0
-            },
-            "basic": {
-                "max_limit": 20000,
-                "min_limit": 1000,
-                "income_multiplier": 2.0
-            }
+            "premium": {"max_limit": 100000, "min_limit": 10000, "income_multiplier": 5.0},
+            "standard": {"max_limit": 50000, "min_limit": 3000, "income_multiplier": 3.0},
+            "basic": {"max_limit": 20000, "min_limit": 1000, "income_multiplier": 2.0},
         }
-        
         return limits.get(persona, limits["basic"])
