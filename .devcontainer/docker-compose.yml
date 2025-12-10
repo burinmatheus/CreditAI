@@ -8,22 +8,5 @@ services:
     volumes:
       - ..:/workspaces/CreditAI:cached
     command: sleep infinity
-    network_mode: service:postgres
     env_file:
       - ${ENV_FILE:-../.env}
-    depends_on:
-      - postgres
-
-  postgres:
-    image: postgres:15
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ../database/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
-
-volumes:
-  postgres-data:

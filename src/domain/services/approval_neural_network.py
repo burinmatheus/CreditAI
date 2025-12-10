@@ -2,6 +2,7 @@
 Etapa 4: Decisão de Aprovação usando Rede Neural (PyTorch)
 Inclui treinamento (backprop) com geração de dados sintéticos e salvamento/carregamento de pesos.
 """
+import os
 from pathlib import Path
 from typing import Tuple, List, Dict
 import json
@@ -20,41 +21,64 @@ class ApprovalMLP(nn.Module):
     def __init__(self):
         super().__init__()
         torch.manual_seed(42)
-        self.fc1 = nn.Linear(10, 8)
-        self.fc2 = nn.Linear(8, 3)
+        self.fc1 = nn.Linear(10, 16)
+        self.fc2 = nn.Linear(16, 3)
         self._init_weights()
 
     def _init_weights(self) -> None:
         """Inicializa pesos com heurística de negócio para estabilidade."""
         with torch.no_grad():
-            # Sensibilidades: score/income positivos, dívida negativa
+            # Heurística alinhada às regras de rotulagem:
+            # - Score/income altos favorecem aprovação
+            # - Risco alto e dívida alta puxam rejeição
+            # - Limite muito próximo/alto ou ausência de emprego sugerem pendência
             w1 = torch.tensor([
-                [0.8, 0.7, 0.6, -0.5, 0.4, 0.3, -0.4, -0.3, 0.5, 0.6],
-                [-0.6, 0.5, 0.6, -0.8, 0.7, 0.4, -0.6, -0.5, 0.3, 0.4],
-                [0.4, 0.6, 0.5, -0.3, 0.8, 0.5, -0.3, -0.2, 0.4, 0.5],
-                [-0.7, 0.4, 0.5, -0.7, 0.6, 0.3, -0.8, -0.6, 0.2, 0.3],
-                [0.5, 0.6, 0.4, -0.4, 0.5, 0.6, -0.5, -0.4, 0.7, 0.8],
-                [0.3, 0.4, 0.5, -0.5, 0.4, 0.3, -0.6, -0.7, 0.3, 0.4],
-                [0.7, 0.8, 0.6, -0.4, 0.5, 0.4, -0.3, -0.4, 0.4, 0.5],
-                [-0.5, 0.5, 0.4, -0.6, 0.6, 0.5, -0.7, -0.5, 0.3, 0.4],
+                # h0: aprovação por score/income, penaliza dívida/risco/limite
+                [0.9, 1.0, 0.8, -1.0, 0.6, 0.4, -0.2, -0.2, -0.8, -0.6],
+                # h1: aprovação por emprego e score, penaliza risco
+                [0.3, 0.8, 0.2, -0.4, 1.0, 0.3, -0.1, -0.1, -0.7, -0.3],
+                # h2: rejeição por risco alto/dívida alta
+                [-0.4, -0.6, -0.3, 1.1, -0.6, -0.3, 0.2, 0.2, 1.2, 0.4],
+                # h3: rejeição por score baixo e risco
+                [-1.0, -0.9, -0.4, 0.4, -0.5, -0.2, 0.1, 0.1, 0.8, 0.2],
+                # h4: pendência por limite alto ou sem emprego
+                [0.0, -0.2, 0.0, 0.2, -0.8, 0.0, 0.0, 0.0, 0.5, 1.0],
+                # h5: pendência por risco moderado
+                [0.0, -0.2, 0.0, 0.3, 0.0, 0.0, 0.0, 0.0, 0.7, 0.2],
+                # h6: aprovação por banco/emprego
+                [0.2, 0.4, 0.2, -0.2, 0.7, 0.5, 0.0, 0.0, -0.3, -0.2],
+                # h7: leve penalização por consultas/empréstimos (ruído)
+                [0.0, -0.1, 0.0, 0.1, 0.0, 0.0, 0.2, 0.2, 0.2, 0.0],
+                # h8-h15: inicialização fraca (quase nula) para permitir ajuste
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             ], dtype=torch.float32)
-            b1 = torch.tensor([0.1, -0.1, 0.2, -0.2, 0.1, -0.1, 0.2, -0.1], dtype=torch.float32)
+            b1 = torch.tensor([0.1, 0.1, -0.1, -0.1, 0.0, 0.0, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=torch.float32)
             self.fc1.weight.copy_(w1)
             self.fc1.bias.copy_(b1)
 
+            # Mapear neurônios ocultos para saídas coerentes com as regras
             w2 = torch.tensor([
-                [0.9, -0.7, 0.6, -0.8, 0.7, -0.5, 0.8, -0.6],  # APPROVED
-                [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3],      # UNDER_REVIEW
-                [-0.8, 0.9, -0.5, 0.9, -0.6, 0.7, -0.7, 0.8],   # REJECTED
+                # APPROVED: reforça h0, h1, h6; penaliza sinais de risco h2/h3/h4/h5
+                [1.0, 0.8, -0.9, -0.8, -0.6, -0.4, 0.5, -0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                # PENDING: reforça h4/h5 (limite alto, risco moderado) e pouco dos demais
+                [-0.2, 0.0, 0.2, 0.2, 1.0, 0.8, 0.0, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                # REJECTED: reforça h2/h3 (risco/score baixo) e um pouco de h7
+                [-0.8, -0.6, 1.1, 1.0, 0.2, 0.3, -0.4, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             ], dtype=torch.float32)
-            b2 = torch.tensor([0.2, 0.0, -0.2], dtype=torch.float32)
+            b2 = torch.tensor([0.1, 0.0, -0.1], dtype=torch.float32)
             self.fc2.weight.copy_(w2)
             self.fc2.bias.copy_(b2)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = torch.sigmoid(self.fc1(x))
-        x = self.fc2(x)
-        return F.softmax(x, dim=1)
+        x = F.relu(self.fc1(x))
+        return self.fc2(x)
 
 
 class ApprovalNeuralNetwork:
@@ -64,6 +88,11 @@ class ApprovalNeuralNetwork:
         self.model = ApprovalMLP()
         self.model.eval()
         torch.set_grad_enabled(False)
+
+        self.mlflow_enabled = False
+        self.mlflow = None
+        self.mlflow_experiment = os.getenv("MLFLOW_EXPERIMENT")
+        self._init_mlflow()
 
         # Diretórios para dados e pesos
         self.data_dir = Path("/workspaces/CreditAI/data/training")
@@ -75,6 +104,21 @@ class ApprovalNeuralNetwork:
 
         self._load_weights_if_available()
 
+    def _init_mlflow(self) -> None:
+        """Configura MLflow se disponível; falha silenciosa caso indisponível."""
+        try:
+            import mlflow
+
+            tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
+            mlflow.set_tracking_uri(tracking_uri)
+            mlflow.set_experiment(self.mlflow_experiment)
+            self.mlflow = mlflow
+            self.mlflow_enabled = True
+            print(f"[MLflow] Tracking em {tracking_uri} | experimento={self.mlflow_experiment}")
+        except Exception as exc:  # pragma: no cover - opcional
+            print(f"[MLflow] Desabilitado: {exc}")
+            self.mlflow_enabled = False
+
     def decide_approval(
         self,
         profile: CustomerProfile,
@@ -84,70 +128,24 @@ class ApprovalNeuralNetwork:
     ) -> Tuple[ApprovalStatus, float, List[str], dict]:
         inputs = self._prepare_inputs(profile, approved_limit, requested_amount, risk_assessment)
         with torch.no_grad():
-            probs = self.model(inputs)[0]
+            logits = self.model(inputs)
+            probs = torch.softmax(logits, dim=1)[0]
 
         decision_index = int(torch.argmax(probs).item())
         confidence = float(probs[decision_index].item())
-
-        if decision_index == 0:
-            status = ApprovalStatus.APPROVED
-            reasons = self._get_approval_reasons(profile, risk_assessment, confidence)
-        elif decision_index == 1:
-            status = ApprovalStatus.PENDING_REVIEW
-            reasons = self._get_review_reasons(profile, risk_assessment)
-        else:
-            status = ApprovalStatus.REJECTED
-            reasons = self._get_rejection_reasons(profile, risk_assessment)
-
-        status, reasons = self._apply_business_rules(status, reasons, profile, risk_assessment, confidence)
+        statuses = [
+            ApprovalStatus.APPROVED,
+            ApprovalStatus.PENDING_REVIEW,
+            ApprovalStatus.REJECTED,
+        ]
+        status = statuses[decision_index]
+        reasons: List[str] = []
         prob_dict = {
             "approved": float(probs[0].item()),
             "pending": float(probs[1].item()),
             "rejected": float(probs[2].item()),
         }
         return status, confidence, reasons, prob_dict
-
-    # === Treinamento com backprop ===
-    def train_model(
-        self,
-        num_samples: int = 500,
-        epochs: int = 30,
-        lr: float = 1e-3,
-        batch_size: int = 64,
-    ) -> Dict[str, float]:
-        """Gera dados sintéticos, treina via backprop, salva pesos e recarrega em memória."""
-        torch.set_grad_enabled(True)
-        self.model.train()
-
-        features, labels = self._generate_synthetic_dataset(num_samples)
-        dataset = torch.utils.data.TensorDataset(features, labels)
-        loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
-
-        opt = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=1e-4)
-        criterion = nn.CrossEntropyLoss()
-
-        for epoch in range(epochs):
-            running = 0.0
-            for xb, yb in loader:
-                opt.zero_grad()
-                preds = self.model(xb)
-                loss = criterion(preds, yb)
-                loss.backward()
-                opt.step()
-                running += loss.item() * xb.size(0)
-            avg_loss = running / len(dataset)
-            if epoch % max(1, epochs // 5) == 0:
-                print(f"[RNA] epoch {epoch+1}/{epochs} loss={avg_loss:.4f}")
-
-        # Salvar dados e pesos
-        np.savez(self.data_dir / "synthetic_training.npz", features=features.numpy(), labels=labels.numpy())
-        torch.save(self.model.state_dict(), self.model_path)
-
-        # Recarregar pesos em modo eval
-        self._load_weights_if_available()
-
-        torch.set_grad_enabled(False)
-        return {"loss": float(avg_loss)}
 
     def generate_dataset_jsonl(self, num_samples: int = 1000, filename: str | None = None) -> Path:
         """Gera dados sintéticos e salva em JSONL para inspeção/treino offline."""
@@ -187,6 +185,19 @@ class ApprovalNeuralNetwork:
         opt = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=1e-4)
         criterion = nn.CrossEntropyLoss()
 
+        run = None
+        if self.mlflow_enabled:
+            run = self.mlflow.start_run(run_name=f"train_from_{jsonl_path.name}")
+            self.mlflow.log_params({
+                "jsonl_path": str(jsonl_path),
+                "epochs": epochs,
+                "lr": lr,
+                "batch_size": batch_size,
+                "weight_decay": 1e-4,
+                "samples": len(dataset),
+                "method": "jsonl",
+            })
+
         for epoch in range(epochs):
             running = 0.0
             for xb, yb in loader:
@@ -199,10 +210,20 @@ class ApprovalNeuralNetwork:
             avg_loss = running / len(dataset)
             if epoch % max(1, epochs // 5) == 0:
                 print(f"[RNA] (jsonl) epoch {epoch+1}/{epochs} loss={avg_loss:.4f}")
+            if self.mlflow_enabled:
+                self.mlflow.log_metric("loss", avg_loss, step=epoch + 1)
 
         torch.save(self.model.state_dict(), self.model_path)
         self._load_weights_if_available()
         torch.set_grad_enabled(False)
+
+        if self.mlflow_enabled:
+            try:
+                self.mlflow.log_metric("final_loss", avg_loss)
+                self.mlflow.log_artifact(self.model_path)
+                self.mlflow.log_artifact(jsonl_path)
+            finally:
+                self.mlflow.end_run()
         return {"loss": float(avg_loss), "samples": len(dataset)}
 
     def _load_weights_if_available(self) -> None:
@@ -219,7 +240,7 @@ class ApprovalNeuralNetwork:
         rng = np.random.default_rng()
 
         ages = rng.integers(18, 75, size=n)
-        scores = rng.integers(300, 901, size=n)
+        scores = rng.integers(0, 1000, size=n)
         incomes = rng.uniform(800, 50000, size=n)
         debt_ratios = rng.uniform(0.0, 1.0, size=n)
         employment = rng.choice([0.0, 1.0], size=n, p=[0.2, 0.8])
@@ -316,78 +337,3 @@ class ApprovalNeuralNetwork:
             limit_ratio,
         ], dtype=np.float32)
         return torch.tensor(arr).unsqueeze(0)
-
-    def _apply_business_rules(
-        self,
-        status: ApprovalStatus,
-        reasons: List[str],
-        profile: CustomerProfile,
-        risk_assessment: RiskAssessment,
-        confidence: float,
-    ) -> Tuple[ApprovalStatus, List[str]]:
-        if profile.has_bacen_restriction:
-            return ApprovalStatus.REJECTED, ["BACEN restriction detected"]
-
-        if risk_assessment.risk_score > 0.85:
-            return ApprovalStatus.REJECTED, ["Risk score too high", *reasons]
-
-        if profile.credit_score < 400:
-            return ApprovalStatus.REJECTED, ["Credit score below minimum threshold", *reasons]
-
-        if confidence < 0.6 and status == ApprovalStatus.APPROVED:
-            return ApprovalStatus.PENDING_REVIEW, ["Low confidence score", *reasons]
-
-        return status, reasons
-
-    def _get_approval_reasons(
-        self,
-        profile: CustomerProfile,
-        risk_assessment: RiskAssessment,
-        confidence: float,
-    ) -> List[str]:
-        reasons: List[str] = []
-        if profile.credit_score > 700:
-            reasons.append("Excellent credit score")
-        if risk_assessment.risk_score < 0.3:
-            reasons.append("Low risk assessment")
-        if profile.debt_to_income_ratio < 0.3:
-            reasons.append("Healthy debt-to-income ratio")
-        if profile.time_at_job_months > 24:
-            reasons.append("Stable employment history")
-        if confidence > 0.8:
-            reasons.append("High confidence prediction")
-        return reasons if reasons else ["Approved based on overall profile"]
-
-    def _get_review_reasons(
-        self,
-        profile: CustomerProfile,
-        risk_assessment: RiskAssessment,
-    ) -> List[str]:
-        reasons: List[str] = []
-        if 0.4 <= risk_assessment.risk_score <= 0.6:
-            reasons.append("Moderate risk level requires review")
-        if profile.num_credit_inquiries > 5:
-            reasons.append("High number of recent credit inquiries")
-        if profile.time_at_job_months < 12:
-            reasons.append("Short employment history")
-        if 0.3 <= profile.debt_to_income_ratio <= 0.4:
-            reasons.append("Borderline debt-to-income ratio")
-        return reasons if reasons else ["Manual review recommended"]
-
-    def _get_rejection_reasons(
-        self,
-        profile: CustomerProfile,
-        risk_assessment: RiskAssessment,
-    ) -> List[str]:
-        reasons: List[str] = []
-        if risk_assessment.risk_score > 0.7:
-            reasons.append("High default risk")
-        if profile.credit_score < 500:
-            reasons.append("Insufficient credit score")
-        if profile.debt_to_income_ratio > 0.5:
-            reasons.append("Excessive debt-to-income ratio")
-        if profile.employment_status not in ["employed", "self_employed"]:
-            reasons.append("Employment status does not meet requirements")
-        if profile.num_credit_inquiries > 8:
-            reasons.append("Too many recent credit inquiries")
-        return reasons if reasons else ["Does not meet approval criteria"]

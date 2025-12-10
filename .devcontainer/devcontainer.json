@@ -3,15 +3,15 @@
   "dockerComposeFile": "docker-compose.yml",
   "service": "app",
   "workspaceFolder": "/workspaces/CreditAI",
-  "forwardPorts": [8000, 5432],
+  "forwardPorts": [8000, 5050],
   "portsAttributes": {
     "8000": {
       "label": "Application",
       "onAutoForward": "notify"
     },
-    "5432": {
-      "label": "PostgreSQL",
-      "onAutoForward": "silent"
+    "5050": {
+      "label": "MLflow UI",
+      "onAutoForward": "notify"
     }
   },
   "remoteUser": "root",

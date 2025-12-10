@@ -49,42 +49,41 @@ Cliente Solicita Crédito
 
 ```
 ┌───────────────────────────────────────────────────────────┐
-│                    DOMAIN LAYER (Core)                     │
+│                    DOMAIN LAYER (Core)                    │
 │  ┌─────────────────────────────────────────────────────┐  │
 │  │ Entities: CreditRequest, CustomerProfile,           │  │
 │  │           CreditAnalysisResult, RiskAssessment      │  │
-│  │                                                       │  │
+│  │                                                     │  │
 │  │ Services: PersonaFilterDFS, CreditLimitBFS,         │  │
 │  │           RiskFuzzyLogic, ApprovalNeuralNetwork     │  │
 │  └─────────────────────────────────────────────────────┘  │
 └───────────────────────────────────────────────────────────┘
                             ↕
 ┌───────────────────────────────────────────────────────────┐
-│                  APPLICATION LAYER                         │
+│                  APPLICATION LAYER                        │
 │  ┌─────────────────────────────────────────────────────┐  │
 │  │ CreditAnalysisService (Orchestrator)                │  │
-│  │ - Executa pipeline completo de 4 etapas            │  │
+│  │ - Executa pipeline completo de 4 etapas             │  │
 │  │ - Coordena serviços de domínio                      │  │
 │  │ - Gera resumo de análise                            │  │
 │  └─────────────────────────────────────────────────────┘  │
 └───────────────────────────────────────────────────────────┘
                             ↕
 ┌───────────────────────────────────────────────────────────┐
-│              INFRASTRUCTURE LAYER (Adapters)               │
+│              INFRASTRUCTURE LAYER (Adapters)              │
 │  ┌─────────────────────────────────────────────────────┐  │
-│  │ PostgreSQL: customer_profiles, credit_requests,     │  │
-│  │             credit_analysis_results                 │  │
+│  │ (Não utilizado no momento)                          │  │
 │  └─────────────────────────────────────────────────────┘  │
 └───────────────────────────────────────────────────────────┘
                             ↕
 ┌───────────────────────────────────────────────────────────┐
-│               INTERFACES LAYER (HTTP/API)                  │
+│               INTERFACES LAYER (HTTP/API)                 │
 │  ┌─────────────────────────────────────────────────────┐  │
-│  │ FastAPI REST API:                                    │  │
+│  │ FastAPI REST API:                                   │  │
 │  │ - POST /api/credit/analyze                          │  │
 │  │ - GET  /api/credit/products                         │  │
 │  │ - GET  /api/credit/health                           │  │
-│  │                                                       │  │
+│  │                                                     │  │
 │  │ Swagger UI: http://localhost:8000/docs              │  │
 │  └─────────────────────────────────────────────────────┘  │
 └───────────────────────────────────────────────────────────┘
@@ -108,15 +107,14 @@ cd CreditAI
 2. Abra no VS Code e use "Reopen in Container"
 
 3. O container será iniciado automaticamente com:
-   - PostgreSQL (porta 5432)
-   - Python 3.12
-   - Todas as dependências instaladas
+  - Python 3.12
+  - Todas as dependências instaladas
 
 4. Acesse a aplicação:
    - API: http://localhost:8000
    - Swagger UI: http://localhost:8000/docs
    - ReDoc: http://localhost:8000/redoc
-
+CreditAI/ 
 ## 📡 API Endpoints
 
 ### POST /api/credit/analyze
@@ -133,8 +131,7 @@ Executa análise completa de crédito em 4 etapas.
     "marital_status": "married",
     "employment_status": "employed",
     "income": 8500.0,
-    "debt_to_income_ratio": 0.25,
-    "credit_score": 780,
+│   │   └── adapters/                # (vazio no momento)
     "time_at_job_months": 48,
     "has_bank_account": true,
     "has_bacen_restriction": false,
@@ -143,9 +140,6 @@ Executa análise completa de crédito em 4 etapas.
   },
   "product_type": "personal_loan",
   "requested_amount": 25000.0,
-  "requested_installments": 36,
-  "purpose": "home_improvement"
-}
 ```
 
 **Response:** (DTO `CreditAnalysisResponseDTO`)
@@ -162,32 +156,13 @@ Executa análise completa de crédito em 4 etapas.
 
   "credit_limit_amount": 25000.0,
   "max_installment_value": 850.0,
-  "max_installments": 36,
-  "interest_rate": 0.025,
-
-  "risk_level": "LOW",
   "risk_score": 2.1,
   "risk_description": "Low default risk",
-
-  "neural_network_confidence": 0.91,
-
   "approved_amount": 25000.0,
   "approved_installments": 36,
-  "monthly_payment": 850.0,
-  "total_to_pay": 30600.0,
-
-  "summary": "Approved after DFS, BFS, fuzzy risk and NN decision"
-}
 ```
 
 ### GET /api/credit/products
-Lista produtos de crédito disponíveis.
-
-**Response:**
-```json
-{
-  "products": [
-    {
       "type": "personal_loan",
       "name": "Personal Loan",
       "min_amount": 1000.0,
@@ -230,6 +205,31 @@ curl http://localhost:8000/api/credit/products
 
 # Health check
 curl http://localhost:8000/api/credit/health
+
+## 📈 MLflow – acompanhando os treinos
+
+O projeto registra treinos da rede neural no MLflow.
+
+### Subir a UI local do MLflow
+```bash
+mlflow ui \
+  --backend-store-uri file:///workspaces/CreditAI/mlruns \
+  --host 0.0.0.0 \
+  --port 5050 \
+  --allowed-hosts="*" \
+  --cors-allowed-origins="*"
+```
+- Acesse via port-forward do devcontainer: http://localhost:5050 (ajuste o port-forward se necessário).
+  - Se aparecer 403/host não autorizado, confirme que o port-forward usa `localhost` ou `127.0.0.1`; com `--allowed-hosts "localhost,127.0.0.1"` ambos são aceitos.
+
+### O que é logado
+- Parâmetros: epochs, lr, batch_size, weight_decay, método (synthetic/jsonl), num_samples/samples.
+- Métricas: loss por época, loss final.
+
+### Fluxo rápido
+1. Gere dados sintéticos: `POST /api/credit/generate-data`.
+2. Treine a partir de JSONL existente: `POST /api/credit/train-from-file` (forneça `filename`).
+3. Abra a UI do MLflow (comando acima) e visualize runs, métricas e artefatos.
 ```
 
 ## 🔬 Detalhes das Técnicas de IA
@@ -361,7 +361,7 @@ CreditAI/
 │   │
 │   ├── infrastructure/              # Camada de Infraestrutura
 │   │   └── adapters/
-│   │       └── database/            # PostgreSQL
+│   │       └── (vazio)              # Sem dependências externas
 │   │
 │   ├── interfaces/                  # Camada de Interface
 │   │   └── http/
@@ -369,9 +369,6 @@ CreditAI/
 │   │       └── credit_routes.py     # Credit endpoints
 │   │
 │   └── main.py                      # Bootstrap & DI
-│
-├── database/
-│   └── init-db.sql                  # Schema com 3 tabelas
 │
 ├── examples/
 │   └── credit_analysis_examples.json # 8 cenários de teste
@@ -384,35 +381,12 @@ CreditAI/
 └── README.md
 ```
 
-## 🗄️ Banco de Dados
-
-### Tabelas
-
-**customer_profiles** - Perfil do cliente
-- Dados demográficos: age, gender, marital_status
-- Dados financeiros: income, credit_score, debt_to_income_ratio
-- Dados de emprego: employment_status, time_at_job_months
-- Restrições: has_bacen_restriction
-
-**credit_requests** - Solicitação de crédito
-- requested_amount
-- product_type (personal_loan, credit_card, auto_loan, home_loan)
-- purpose
-
-**credit_analysis_results** - Resultados completos das 4 etapas
-- stage_1: persona_filter_passed, rejection_reason
-- stage_2: approved_limit, max_installments, interest_rate
-- stage_3: risk_level, risk_score
-- stage_4: final_status, confidence_score
-- Timestamps e índices para queries otimizadas
-
 ## 🔧 Tecnologias
 
 - **Python 3.12**
 - **FastAPI** - Framework web moderno e rápido
 - **NumPy** - Computação numérica (rede neural)
 - **Pydantic** - Validação de dados
-- **PostgreSQL 15** - Banco de dados relacional
 - **Docker & Docker Compose** - Containerização
 - **Uvicorn** - Servidor ASGI
 
@@ -435,8 +409,6 @@ Cliente → FastAPI → CreditAnalysisService
                           ↓
                     CreditAnalysisResult
                           ↓
-         PostgreSQL ← Store Result
-                          ↓
 Cliente ← Response com 4 etapas
 ```
 
@@ -453,13 +425,6 @@ venv\Scripts\activate  # Windows
 
 # Instalar dependências
 pip install -r requirements.txt
-
-# Configurar variáveis de ambiente
-export POSTGRES_HOST=localhost
-export POSTGRES_PORT=5432
-export POSTGRES_USER=creditai
-export POSTGRES_PASSWORD=creditai_dev
-export POSTGRES_DB=creditai_db
 
 # Executar aplicação
 python -m src.main
