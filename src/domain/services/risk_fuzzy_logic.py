@@ -27,7 +27,7 @@ class RiskFuzzyLogic:
 
     def _setup_variables(self) -> None:
         # Entradas
-        self.credit_score = ctrl.Antecedent(np.arange(300, 901, 1), "credit_score")
+        self.credit_score = ctrl.Antecedent(np.arange(0, 1001, 1), "credit_score")
         self.income = ctrl.Antecedent(np.arange(0, 50001, 100), "income")
         self.debt_ratio = ctrl.Antecedent(np.arange(0, 1.01, 0.01), "debt_ratio")
         self.employment_time = ctrl.Antecedent(np.arange(0, 121, 1), "employment_time")
@@ -38,9 +38,9 @@ class RiskFuzzyLogic:
         self.risk = ctrl.Consequent(np.arange(0, 1.01, 0.01), "risk")
 
         # Funções de pertinência
-        self.credit_score["low"] = fuzz.trapmf(self.credit_score.universe, [300, 300, 450, 550])
+        self.credit_score["low"] = fuzz.trapmf(self.credit_score.universe, [0, 0, 450, 550])
         self.credit_score["med"] = fuzz.trimf(self.credit_score.universe, [500, 650, 780])
-        self.credit_score["high"] = fuzz.trapmf(self.credit_score.universe, [700, 780, 900, 900])
+        self.credit_score["high"] = fuzz.trapmf(self.credit_score.universe, [700, 780, 1000, 1000])
 
         self.income["low"] = fuzz.trapmf(self.income.universe, [0, 0, 2000, 4000])
         self.income["med"] = fuzz.trimf(self.income.universe, [3000, 7000, 12000])
@@ -57,28 +57,43 @@ class RiskFuzzyLogic:
         self.inquiries["few"] = fuzz.trapmf(self.inquiries.universe, [0, 0, 2, 4])
         self.inquiries["many"] = fuzz.trapmf(self.inquiries.universe, [3, 6, 20, 20])
 
-        self.limit_ratio["low"] = fuzz.trapmf(self.limit_ratio.universe, [0, 0, 0.3, 0.5])
-        self.limit_ratio["med"] = fuzz.trimf(self.limit_ratio.universe, [0.3, 0.6, 0.9])
-        self.limit_ratio["high"] = fuzz.trapmf(self.limit_ratio.universe, [0.7, 0.9, 1.0, 1.0])
+        self.limit_ratio["low"] = fuzz.trapmf(self.limit_ratio.universe, [0, 0, 0.4, 0.6])
+        self.limit_ratio["med"] = fuzz.trimf(self.limit_ratio.universe, [0.5, 0.7, 0.85])
+        self.limit_ratio["high"] = fuzz.trapmf(self.limit_ratio.universe, [0.8, 0.9, 1.0, 1.0])
 
-        self.risk["low"] = fuzz.trimf(self.risk.universe, [0.0, 0.15, 0.35])
-        self.risk["med"] = fuzz.trimf(self.risk.universe, [0.25, 0.5, 0.75])
-        self.risk["high"] = fuzz.trimf(self.risk.universe, [0.65, 0.85, 1.0])
+        self.risk["low"] = fuzz.trapmf(self.risk.universe, [0.0, 0.0, 0.20, 0.40])
+        self.risk["med"] = fuzz.trimf(self.risk.universe, [0.30, 0.55, 0.75])
+        self.risk["high"] = fuzz.trapmf(self.risk.universe, [0.65, 0.80, 1.0, 1.0])
 
     def _setup_rules(self) -> None:
         self.rules = [
+            # ========== REGRAS DE BAIXO RISCO ==========
+            # Prioridade: credit_score alto ou income alto com condições favoráveis
             ctrl.Rule(self.credit_score["high"] & self.debt_ratio["low"], self.risk["low"]),
             ctrl.Rule(self.credit_score["high"] & self.debt_ratio["med"], self.risk["low"]),
-            ctrl.Rule(self.credit_score["med"] & self.debt_ratio["low"] & self.employment_time["long"], self.risk["low"]),
+            ctrl.Rule(self.credit_score["high"] & self.inquiries["few"], self.risk["low"]),
+            ctrl.Rule(self.income["high"] & self.debt_ratio["low"], self.risk["low"]),
+            ctrl.Rule(self.income["high"] & self.inquiries["few"], self.risk["low"]),
+            
+            # Score médio pode ser baixo risco com boas condições
+            ctrl.Rule(self.credit_score["med"] & self.debt_ratio["low"] & self.inquiries["few"], self.risk["low"]),
+            ctrl.Rule(self.credit_score["med"] & self.income["high"], self.risk["low"]),
 
+            # ========== REGRAS DE RISCO MÉDIO ==========
             ctrl.Rule(self.credit_score["med"] & self.debt_ratio["med"], self.risk["med"]),
+            ctrl.Rule(self.credit_score["high"] & self.debt_ratio["high"], self.risk["med"]),  # Score alto compensa dívidas
+            ctrl.Rule(self.credit_score["low"] & self.debt_ratio["low"] & self.income["high"], self.risk["med"]),  # Exceção
             ctrl.Rule(self.income["med"] & self.limit_ratio["med"], self.risk["med"]),
-            ctrl.Rule(self.inquiries["many"] & self.debt_ratio["med"], self.risk["med"]),
+            ctrl.Rule(self.inquiries["many"] & self.debt_ratio["low"], self.risk["med"]),  # Muitas consultas mas sem dívidas
 
-            ctrl.Rule(self.credit_score["low"], self.risk["high"]),
-            ctrl.Rule(self.debt_ratio["high"], self.risk["high"]),
-            ctrl.Rule(self.income["low"] & self.debt_ratio["high"], self.risk["high"]),
-            ctrl.Rule(self.limit_ratio["high"] & self.employment_time["short"], self.risk["high"]),
+            # ========== REGRAS DE ALTO RISCO ==========
+            # Condições críticas que sempre geram alto risco
+            ctrl.Rule(self.credit_score["low"] & self.debt_ratio["med"], self.risk["high"]),  # Mais específica
+            ctrl.Rule(self.credit_score["low"] & self.inquiries["many"], self.risk["high"]),
+            ctrl.Rule(self.debt_ratio["high"] & self.income["low"], self.risk["high"]),
+            ctrl.Rule(self.debt_ratio["high"] & self.income["med"], self.risk["high"]),  # Dívidas altas são críticas
+            ctrl.Rule(self.income["med"] & self.limit_ratio["high"], self.risk["high"]),  # CORRIGIDO: era med
+            ctrl.Rule(self.limit_ratio["high"] & self.employment_time["short"] & self.credit_score["med"], self.risk["high"]),
             ctrl.Rule(self.inquiries["many"] & self.debt_ratio["high"], self.risk["high"]),
         ]
 
@@ -89,19 +104,37 @@ class RiskFuzzyLogic:
     def assess_risk(self, profile: CustomerProfile, approved_limit: float, requested_amount: float) -> RiskAssessment:
         limit_ratio = min(1.0, requested_amount / approved_limit) if approved_limit > 0 else 1.0
 
-        self.simulator.input["credit_score"] = float(profile.credit_score)
-        self.simulator.input["income"] = float(profile.income)
-        self.simulator.input["debt_ratio"] = float(profile.debt_to_income_ratio)
-        self.simulator.input["employment_time"] = float(profile.time_at_job_months)
-        self.simulator.input["inquiries"] = float(profile.num_credit_inquiries)
-        self.simulator.input["limit_ratio"] = float(limit_ratio)
+        # Preparar entradas
+        inputs = {
+            "credit_score": float(profile.credit_score),
+            "income": float(profile.income),
+            "debt_ratio": float(profile.debt_to_income_ratio),
+            "employment_time": float(profile.time_at_job_months),
+            "inquiries": float(profile.num_credit_inquiries),
+            "limit_ratio": float(limit_ratio)
+        }
+        
+        # Log detalhado
+        print("\n" + "="*70)
+        print("🔍 FUZZY LOGIC - Entradas:")
+        print("="*70)
+        for key, value in inputs.items():
+            self.simulator.input[key] = value
+            print(f"  {key:20s}: {value:10.2f}")
+        print(f"  Limite Aprovado     : {approved_limit:10.2f}")
+        print(f"  Valor Solicitado    : {requested_amount:10.2f}")
+        print("="*70)
 
         self.simulator.compute()
         risk_score = float(self.simulator.output["risk"])
+        
+        print(f"📊 FUZZY LOGIC - Saída:")
+        print(f"  Risk Score: {risk_score:.4f}")
+        print("="*70 + "\n")
 
-        if risk_score < 0.35:
+        if risk_score < 0.40:
             risk_level = RiskLevel.LOW
-        elif risk_score < 0.65:
+        elif risk_score < 0.70:
             risk_level = RiskLevel.MEDIUM
         else:
             risk_level = RiskLevel.HIGH
