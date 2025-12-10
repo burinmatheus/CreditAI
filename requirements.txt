@@ -11,3 +11,4 @@ scikit-fuzzy
 scikit-learn
 packaging
 matplotlib
+mlflow

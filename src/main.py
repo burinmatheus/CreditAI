@@ -5,9 +5,6 @@ Configura e inicializa a aplicação com arquitetura hexagonal
 import uvicorn
 from src.config import APP_PORT
 
-# Infrastructure Layer
-from src.infrastructure.adapters.database.postgres_connection import PostgresConnection
-
 # Application Layer
 from src.application.services.health_check_service import HealthCheckService
 from src.application.services.credit_analysis_service import CreditAnalysisService
@@ -22,15 +19,6 @@ def bootstrap_application():
     Segue o padrão de arquitetura hexagonal
     """
     print("🚀 Inicializando CreditAI com Arquitetura Hexagonal...\n")
-
-    # ===== INFRASTRUCTURE LAYER =====
-    print("📦 Inicializando camada de infraestrutura...")
-    
-    # Conexões
-    postgres_conn = PostgresConnection()
-    postgres_conn.initialize()
-    
-    print("✓ Infraestrutura inicializada\n")
 
     # ===== APPLICATION LAYER =====
     print("⚙️  Inicializando camada de aplicação...")
@@ -53,13 +41,13 @@ def bootstrap_application():
     
     print("✓ Interface FastAPI + OpenAPI configurada\n")
 
-    return postgres_conn, fastapi_app
+    return fastapi_app
 
 
 def main():
     """Ponto de entrada principal da aplicação"""
     # Bootstrap com injeção de dependências
-    postgres_conn, fastapi_app = bootstrap_application()
+    fastapi_app = bootstrap_application()
 
     # Mensagens de inicialização
     print("=" * 70)
@@ -72,17 +60,12 @@ def main():
     print("   Domain → Application → Infrastructure → Interfaces (FastAPI)\n")
 
     # Iniciar servidor Uvicorn
-    try:
-        uvicorn.run(
-            fastapi_app.get_app(),
-            host="0.0.0.0",
-            port=APP_PORT,
-            log_level="info"
-        )
-    except KeyboardInterrupt:
-        print("\n\n🛑 Encerrando servidor...")
-        postgres_conn.close_all()
-        print("✓ Aplicação encerrada com sucesso")
+    uvicorn.run(
+        fastapi_app.get_app(),
+        host="0.0.0.0",
+        port=APP_PORT,
+        log_level="info"
+    )
 
 
 if __name__ == "__main__":

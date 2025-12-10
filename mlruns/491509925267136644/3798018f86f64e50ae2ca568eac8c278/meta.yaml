@@ -1,0 +1,14 @@
+artifact_uri: file:///workspaces/CreditAI/mlruns/491509925267136644/3798018f86f64e50ae2ca568eac8c278/artifacts
+end_time: 1765318486251
+entry_point_name: ''
+experiment_id: '491509925267136644'
+lifecycle_stage: active
+run_id: 3798018f86f64e50ae2ca568eac8c278
+run_name: train_from_train_data
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1765318475697
+status: 3
+tags: []
+user_id: root
