@@ -10,6 +10,7 @@ from src.domain.entities.credit_request import (
     CreditRequest,
     CustomerProfile,
     Gender,
+    EmploymentStatus,
     MaritalStatus,
     ProductType,
 )
@@ -80,7 +81,7 @@ async def analyze_credit(request: CreditRequestDTO):
             income=request.customer_profile.income,
             credit_score=request.customer_profile.credit_score,
             debt_to_income_ratio=request.customer_profile.debt_to_income_ratio,
-            employment_status=request.customer_profile.employment_status,
+            employment_status=EmploymentStatus(request.customer_profile.employment_status.value),
             time_at_job_months=request.customer_profile.time_at_job_months,
             has_bank_account=request.customer_profile.has_bank_account,
             has_bacen_restriction=request.customer_profile.has_bacen_restriction,

@@ -4,7 +4,7 @@ Calcula limite de crédito usando exploração em largura do espaço de valores/
 """
 from collections import deque
 from typing import Dict, List, Tuple
-from src.domain.entities.credit_request import CreditRequest, ProductType
+from src.domain.entities.credit_request import CreditRequest, ProductType, EmploymentStatus
 
 
 class CreditLimitBFS:
@@ -152,13 +152,13 @@ class CreditLimitBFS:
         else:
             return 0.7
     
-    def _calculate_employment_factor(self, employment_status: str) -> float:
+    def _calculate_employment_factor(self, employment_status: EmploymentStatus) -> float:
         """Camada 3: Fator de ajuste por status de emprego"""
         factors = {
-            "employed": 1.0,
-            "self_employed": 0.95,
-            "retired": 0.85,
-            "unemployed": 0.5
+            EmploymentStatus.EMPLOYED: 1.0,
+            EmploymentStatus.SELF_EMPLOYED: 0.95,
+            EmploymentStatus.RETIRED: 0.85,
+            EmploymentStatus.UNEMPLOYED: 0.5,
         }
         return factors.get(employment_status, 0.7)
     

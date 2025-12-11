@@ -115,22 +115,16 @@ class RiskFuzzyLogic:
         }
         
         # Log detalhado
-        print("\n" + "="*70)
-        print("🔍 FUZZY LOGIC - Entradas:")
-        print("="*70)
+        print("  Entradas:")
         for key, value in inputs.items():
             self.simulator.input[key] = value
-            print(f"  {key:20s}: {value:10.2f}")
-        print(f"  Limite Aprovado     : {approved_limit:10.2f}")
-        print(f"  Valor Solicitado    : {requested_amount:10.2f}")
-        print("="*70)
+            print(f"    {key:20s}: {value:10.2f}")
+        print(f"    approved_limit     : {approved_limit:10.2f}")
+        print(f"    requested_amount   : {requested_amount:10.2f}")
+        print("\n")
 
         self.simulator.compute()
         risk_score = float(self.simulator.output["risk"])
-        
-        print(f"📊 FUZZY LOGIC - Saída:")
-        print(f"  Risk Score: {risk_score:.4f}")
-        print("="*70 + "\n")
 
         if risk_score < 0.40:
             risk_level = RiskLevel.LOW
@@ -156,6 +150,9 @@ class RiskFuzzyLogic:
 
         main_factors = [k for k, v in fuzzy_memberships.items() if v >= 0.5]
         confidence = max(fuzzy_memberships.values())
+        
+        print(f"  Risk Score: {risk_score:.4f}")
+        print(f"  Risk Level Determination: {risk_level.value.upper()}")
 
         # Gera gráfico da saída fuzzy com marcação do risk_score
         self._plot_risk_output(risk_score)
@@ -193,4 +190,4 @@ class RiskFuzzyLogic:
         fig.tight_layout()
         fig.savefig(filename)
         plt.close(fig)
-        print(f"[Fuzzy] Gráfico de risco salvo em {filename}")
+        print(f"  Gráfico de risco salvo em {filename}")

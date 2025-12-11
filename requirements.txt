@@ -12,3 +12,4 @@ scikit-learn
 packaging
 matplotlib
 mlflow
+pytest

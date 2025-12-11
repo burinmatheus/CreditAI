@@ -68,7 +68,7 @@ class CreditAnalysisService:
                 approval_confidence=0.0,
             )
 
-        print(f"✅ Persona Identificada: {persona_name.upper()}")
+        print(f"   Persona Identificada: {persona_name.upper()}")
         print(f"   Confiança: {persona_confidence*100:.1f}%")
         print(f"   Limite Máximo: R$ {persona_limits['max_limit']:,.2f}")
 
@@ -99,7 +99,7 @@ class CreditAnalysisService:
         print(f"   Fator Score: {limit_factors['score_factor']:.2f}x")
         print(f"   Fator Emprego: {limit_factors['employment_factor']:.2f}x")
         print(f"   Fator Histórico: {limit_factors['history_factor']:.2f}x")
-        print(f"✅ Limite Final Aprovado: R$ {calculated_limit:,.2f}")
+        print(f"   Limite Final Aprovado: R$ {calculated_limit:,.2f}")
         print(f"   Validação: {validation_msg}")
 
         credit_limit_obj = CreditLimit(
@@ -122,9 +122,8 @@ class CreditAnalysisService:
             credit_request.requested_amount,
         )
 
-        print(f"   Risco: {risk_assessment_obj.risk_level.value.upper()} | Score: {risk_assessment_obj.risk_score:.3f}")
-
         # ===== ETAPA 4: RNA (PyTorch) - DECISÃO FINAL =====
+        print("\n")
         print("🧠 ETAPA 4/4: Decisão Final (Rede Neural - PyTorch)")
         print("-" * 70)
 
@@ -156,6 +155,19 @@ class CreditAnalysisService:
                 if risk_assessment_obj.risk_score > 0.65
                 else RejectionReason.OTHER
             )
+
+        print(f"   Decisão Final: {status.value.upper()}")
+        print(f"   Confiança: {confidence*100:.1f}%")
+        print(f"   Motivos: {', '.join(reasons) if reasons else 'Outro'}")
+        print("   Probabilidades RNA:")
+        prob_display = [
+            ("Aprovação", probabilities.get("approved", 0.0)),
+            ("Pendente", probabilities.get("pending", 0.0)),
+            ("Rejeição", probabilities.get("rejected", 0.0)),
+        ]
+        for status_name, probability in prob_display:
+            print(f"      {status_name}: {probability*100:.1f}%")
+        print(f"\n{'='*70}\n")
 
         return CreditAnalysisResult(
             request_id=credit_request.request_id,
