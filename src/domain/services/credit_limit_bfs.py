@@ -48,14 +48,31 @@ class CreditLimitBFS:
     ) -> tuple[float, Dict[str, float]]:
         """
         Calcula o limite usando BFS real sobre estados (valor, parcelas).
+        Segue o padrão:
+        - Renda Líquida = Renda - Valor de encargos
+        - Renda para cálculo = Renda Líquida - Valor de SCR do BACEN
+        - Taxa de juros impacta apenas na parcela, não no limite calculado
         """
         profile = request.customer_profile
         product_cfg = self.PRODUCT_CONFIG[request.product_type]
 
-        income_limit = self._calculate_income_based_limit(
+        # Cálculo da renda disponível seguindo o padrão especificado
+        net_income = self._calculate_net_income(
             profile.income,
+            profile.debt_to_income_ratio,
+        )
+        
+        # Aplicar penalidade por SCR/BACEN se existir restrição
+        income_for_limit_calc = self._calculate_income_for_limit(
+            net_income,
+            profile.has_bacen_restriction,
+        )
+
+        income_limit = self._calculate_income_based_limit(
+            income_for_limit_calc,
             persona_limits["income_multiplier"],
         )
+        
         score_factor = self._calculate_score_factor(profile.credit_score)
         employment_factor = self._calculate_employment_factor(profile.employment_status)
         history_factor = self._calculate_history_factor(
@@ -93,13 +110,16 @@ class CreditLimitBFS:
             if amount > search_cap:
                 continue
 
+            # Calcular parcela com juros
             monthly_payment = self._pmt(
                 product_cfg["base_rate"],
                 installments,
                 amount,
             )
 
-            if monthly_payment <= profile.income * 0.3:
+            # Validar se a parcela com juros não excede 30% da renda líquida
+            # O limite é baseado na renda disponível, não na parcela
+            if monthly_payment <= net_income * 0.3:
                 if amount > best_amount:
                     best_amount = amount
                     best_installments = installments
@@ -119,6 +139,9 @@ class CreditLimitBFS:
             best_payment = self._pmt(product_cfg["base_rate"], best_installments, best_amount)
 
         factors = {
+            "gross_income": profile.income,
+            "net_income": net_income,
+            "income_for_limit_calc": income_for_limit_calc,
             "income_limit": income_limit,
             "score_factor": score_factor,
             "employment_factor": employment_factor,
@@ -126,13 +149,47 @@ class CreditLimitBFS:
             "search_cap": search_cap,
             "best_installments": best_installments,
             "monthly_payment": best_payment,
+            "base_rate": product_cfg["base_rate"],
         }
 
         return round(best_amount, 2), factors
     
-    def _calculate_income_based_limit(self, monthly_income: float, multiplier: float) -> float:
-        """Camada 1: Calcula limite base por renda"""
-        return monthly_income * multiplier
+    
+    def _calculate_net_income(self, gross_income: float, debt_to_income_ratio: float) -> float:
+        """
+        Calcula a Renda Líquida
+        Renda Líquida = Renda - Valor de encargos
+        """
+        if debt_to_income_ratio is None or debt_to_income_ratio <= 0:
+            return gross_income
+        
+        # Valor de encargos = Renda * Razão de endividamento
+        burdens_value = gross_income * debt_to_income_ratio
+        net_income = gross_income - burdens_value
+        
+        # Garantir que não resulte em valor negativo
+        return max(0, net_income)
+    
+    def _calculate_income_for_limit(self, net_income: float, has_bacen_restriction: bool) -> float:
+        """
+        Calcula a Renda para cálculo do limite
+        Renda para cálculo = Renda Líquida - Valor de SCR do BACEN
+        
+        Se houver restrição no BACEN, aplica penalidade de 20% da renda líquida
+        caso contrário, usa 100% da renda líquida
+        """
+        if has_bacen_restriction:
+            # Penalidade de 20% por restrição no BACEN
+            bacen_impact = net_income * 0.20
+            income_for_limit = net_income - bacen_impact
+        else:
+            income_for_limit = net_income
+        
+        return max(0, income_for_limit)
+    
+    def _calculate_income_based_limit(self, income_for_limit: float, multiplier: float) -> float:
+        """Camada 1: Calcula limite base por renda disponível para cálculo"""
+        return income_for_limit * multiplier
     
     def _calculate_score_factor(self, credit_score: int) -> float:
         """Camada 2: Fator de ajuste por credit score"""
