@@ -95,20 +95,50 @@ class CreditAnalysisService:
             calculated_limit,
         )
 
+        # Obter taxa de juros do produto
+        product_config = self.credit_limit_calculator.PRODUCT_CONFIG[credit_request.product_type]
+        interest_rate = product_config["base_rate"]
+        max_installments = min(
+            credit_request.requested_installments,
+            product_config["max_installments"]
+        )
+        
+        # Usar a parcela calculada pelo BFS (que já inclui juros)
+        max_installment_value = limit_factors.get('monthly_payment', calculated_limit / max_installments)
+
+        credit_limit_obj = CreditLimit(
+            approved_amount=calculated_limit,
+            max_installment_value=max_installment_value,
+            max_installments=max_installments,
+            interest_rate=interest_rate,
+            factors=limit_factors,
+        )
+
+        # Calcular parcela prevista caso o cliente seja aprovado (estima com valores solicitados/capados)
+        expected_installments = min(credit_request.requested_installments, max_installments)
+        expected_amount = min(credit_request.requested_amount, calculated_limit)
+        if interest_rate > 0:
+            _factor = (1 + interest_rate) ** expected_installments
+            expected_monthly = (
+                expected_amount * (interest_rate * _factor) / (_factor - 1)
+            )
+        else:
+            expected_monthly = expected_amount / max(expected_installments, 1)
+        # Calcular markup simples para comparação (ex.: 25% como no seu cálculo manual)
+        simple_markup_rate = 0.25
+        simple_monthly = (expected_amount / max(expected_installments, 1)) * (1 + simple_markup_rate)
+
+        # Anexar ao dicionário de fatores para reaproveitamento no resumo
+        credit_limit_obj.factors['expected_monthly'] = expected_monthly
+
         print(f"   Limite Base (Renda): R$ {limit_factors['income_limit']:,.2f}")
         print(f"   Fator Score: {limit_factors['score_factor']:.2f}x")
         print(f"   Fator Emprego: {limit_factors['employment_factor']:.2f}x")
         print(f"   Fator Histórico: {limit_factors['history_factor']:.2f}x")
         print(f"   Limite Final Aprovado: R$ {calculated_limit:,.2f}")
+        print(f"   Percentual de Juros mensal: {interest_rate * 100:.2f}% a.m.")
         print(f"   Validação: {validation_msg}")
 
-        credit_limit_obj = CreditLimit(
-            approved_amount=calculated_limit,
-            max_installment_value=calculated_limit / 24,  # Assumindo 24 parcelas
-            max_installments=24,
-            interest_rate=0.05,  # 5% a.m. exemplo
-            factors=limit_factors,
-        )
 
         print()
 
@@ -209,7 +239,9 @@ class CreditAnalysisService:
                 "ETAPA 2 - Limite de Crédito (BFS):",
                 f"  Limite Aprovado: R$ {result.credit_limit.approved_amount:,.2f}",
                 f"  Parcela Máxima: R$ {result.credit_limit.max_installment_value:,.2f}",
+                f"  Parcela Prevista (se aprovado): R$ {result.credit_limit.factors.get('expected_monthly', result.monthly_payment):,.2f}",
                 f"  Prazo Máximo: {result.credit_limit.max_installments}x",
+                f"  Taxa de Juros Mensal: {result.credit_limit.interest_rate * 100:.2f}% a.m.",
             ])
         
         if result.risk_assessment:
