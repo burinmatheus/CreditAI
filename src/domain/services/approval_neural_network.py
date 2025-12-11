@@ -20,10 +20,10 @@ class ApprovalMLP(nn.Module):
 
     def __init__(self):
         super().__init__()
-        torch.manual_seed(42)
-        self.fc1 = nn.Linear(10, 16)
-        self.fc2 = nn.Linear(16, 3)
-        self._init_weights()
+        torch.manual_seed(42)  # fixa a semente para reprodutibilidade
+        self.fc1 = nn.Linear(10, 16)  # primeira camada: 10 features normalizadas → 16 neurônios
+        self.fc2 = nn.Linear(16, 3)   # camada de saída: 3 logits (approved/pending/rejected)
+        self._init_weights()  # aplica pesos/bias com heurísticas de negócio
 
     def _init_weights(self) -> None:
         """Inicializa pesos com heurística de negócio para estabilidade."""
@@ -77,7 +77,9 @@ class ApprovalMLP(nn.Module):
             self.fc2.bias.copy_(b2)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Aplica camada oculta seguida de ReLU para introduzir não-linearidade sem saturação
         x = F.relu(self.fc1(x))
+        # Devolve logits crus; softmax só é aplicado na etapa de inferência/decisão
         return self.fc2(x)
 
 
@@ -86,23 +88,23 @@ class ApprovalNeuralNetwork:
 
     def __init__(self):
         self.model = ApprovalMLP()
-        self.model.eval()
-        torch.set_grad_enabled(False)
+        self.model.eval()  # modo avaliação por padrão (inference-first)
+        torch.set_grad_enabled(False)  # desabilita grad para evitar custo desnecessário em produção
 
-        self.mlflow_enabled = False
+        self.mlflow_enabled = False  # flag de telemetria/experimentos
         self.mlflow = None
         self.mlflow_experiment = os.getenv("MLFLOW_EXPERIMENT")
-        self._init_mlflow()
+        self._init_mlflow()  # tenta configurar MLflow se a URI estiver presente
 
         # Diretórios para dados e pesos
-        self.data_dir = Path("/workspaces/CreditAI/data/training")
-        self.model_dir = Path("/workspaces/CreditAI/models")
+        self.data_dir = Path("/workspaces/CreditAI/data/training")  # onde salvar datasets sintéticos
+        self.model_dir = Path("/workspaces/CreditAI/models")  # onde salvar/carregar pesos
         self.model_path = self.model_dir / "approval_mlp.pt"
 
-        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.data_dir.mkdir(parents=True, exist_ok=True)  # garante pastas
         self.model_dir.mkdir(parents=True, exist_ok=True)
 
-        self._load_weights_if_available()
+        self._load_weights_if_available()  # carrega pesos treinados, se existirem
 
     def _init_mlflow(self) -> None:
         """Configura MLflow se disponível; falha silenciosa caso indisponível."""
@@ -133,17 +135,17 @@ class ApprovalNeuralNetwork:
     ) -> Tuple[ApprovalStatus, float, List[str], dict]:
         inputs = self._prepare_inputs(profile, approved_limit, requested_amount, risk_assessment)
         with torch.no_grad():
-            logits = self.model(inputs)
-            probs = torch.softmax(logits, dim=1)[0]
+            logits = self.model(inputs)  # passa pelo MLP e obtém logits brutos para cada classe
+            probs = torch.softmax(logits, dim=1)[0]  # converte logits em probabilidades somando 1
 
-        decision_index = int(torch.argmax(probs).item())
-        confidence = float(probs[decision_index].item())
+        decision_index = int(torch.argmax(probs).item())  # escolhe a classe com maior prob
+        confidence = float(probs[decision_index].item())  # guarda a probabilidade da classe escolhida
         statuses = [
             ApprovalStatus.APPROVED,
             ApprovalStatus.PENDING_REVIEW,
             ApprovalStatus.REJECTED,
         ]
-        status = statuses[decision_index]
+        status = statuses[decision_index]  # mapeia índice para enum de status
         reasons: List[str] = []
         prob_dict = {
             "approved": float(probs[0].item()),
@@ -174,19 +176,22 @@ class ApprovalNeuralNetwork:
         batch_size: int = 64,
     ) -> Dict[str, float]:
         """Treina lendo features/labels de um JSONL."""
-        records = []
+        records = []  # armazena pares (features, label) lidos linha a linha
         with jsonl_path.open("r", encoding="utf-8") as f:
             for line in f:
                 obj = json.loads(line)
-                records.append((obj["features"], obj["label"]))
+            records.append((obj["features"], obj["label"]))  # acumula features e rótulo
 
-        feats = torch.tensor([r[0] for r in records], dtype=torch.float32)
-        labs = torch.tensor([r[1] for r in records], dtype=torch.long)
-        dataset = torch.utils.data.TensorDataset(feats, labs)
-        loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        feats = torch.tensor([r[0] for r in records], dtype=torch.float32)  # tensor de entrada
+        labs = torch.tensor([r[1] for r in records], dtype=torch.long)  # tensor de rótulos
+        dataset = torch.utils.data.TensorDataset(feats, labs)  # dataset PyTorch
+        loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)  # batches embaralhados
 
-        torch.set_grad_enabled(True)
-        self.model.train()
+        torch.set_grad_enabled(True)  # habilita autograd (cálculo de gradientes) durante o treino
+        self.model.train()  # coloca o modelo em modo treino
+        # Otimizador e perda:
+        # - Adam: descida de gradiente com momentum (1ª média dos gradientes) + escala adaptativa (2ª média das variâncias) e bias correction; costuma convergir rápido e é menos sensível ao lr.
+        # - CrossEntropyLoss: aplica softmax nos logits e calcula entropia cruzada negativa contra o rótulo inteiro (0/1/2), penalizando probabilidades baixas na classe correta.
         opt = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=1e-4)
         criterion = nn.CrossEntropyLoss()
 
@@ -204,29 +209,29 @@ class ApprovalNeuralNetwork:
             })
 
         for epoch in range(epochs):
-            running = 0.0
+            running = 0.0  # acumula perda ponderada pelo tamanho do batch
             for xb, yb in loader:
-                opt.zero_grad()
-                preds = self.model(xb)
-                loss = criterion(preds, yb)
-                loss.backward()
-                opt.step()
-                running += loss.item() * xb.size(0)
-            avg_loss = running / len(dataset)
+                opt.zero_grad()  # zera gradientes
+                preds = self.model(xb)  # forward
+                loss = criterion(preds, yb)  # calcula perda do batch
+                loss.backward()  # backprop
+                opt.step()  # atualiza pesos
+                running += loss.item() * xb.size(0)  # soma perda ponderada pelo batch
+            avg_loss = running / len(dataset)  # perda média por amostra
             if epoch % max(1, epochs // 5) == 0:
-                print(f"[RNA] (jsonl) epoch {epoch+1}/{epochs} loss={avg_loss:.4f}")
+                print(f"[RNA] (jsonl) epoch {epoch+1}/{epochs} loss={avg_loss:.4f}")  # log parcial
             if self.mlflow_enabled:
-                self.mlflow.log_metric("loss", avg_loss, step=epoch + 1)
+                self.mlflow.log_metric("loss", avg_loss, step=epoch + 1)  # registra métrica no MLflow
 
-        torch.save(self.model.state_dict(), self.model_path)
-        self._load_weights_if_available()
-        torch.set_grad_enabled(False)
+        torch.save(self.model.state_dict(), self.model_path)  # persiste pesos treinados
+        self._load_weights_if_available()  # recarrega para garantir modo eval/CPU
+        torch.set_grad_enabled(False)  # desabilita autograd após treino
 
         if self.mlflow_enabled:
             try:
-                self.mlflow.log_metric("final_loss", avg_loss)
-                self.mlflow.log_artifact(self.model_path)
-                self.mlflow.log_artifact(jsonl_path)
+                self.mlflow.log_metric("final_loss", avg_loss)  # métrica final
+                self.mlflow.log_artifact(self.model_path)  # salva pesos no MLflow
+                self.mlflow.log_artifact(jsonl_path)  # salva dataset usado
             finally:
                 self.mlflow.end_run()
         return {"loss": float(avg_loss), "samples": len(dataset)}

@@ -1,8 +1,9 @@
 artifact_uri: file:///workspaces/CreditAI/mlruns/491509925267136644/62c33850d177448fa96dea61ea1dc6fb/artifacts
+deleted_time: 1765416449196
 end_time: 1765320736443
 entry_point_name: ''
 experiment_id: '491509925267136644'
-lifecycle_stage: active
+lifecycle_stage: deleted
 run_id: 62c33850d177448fa96dea61ea1dc6fb
 run_name: train_from_train_data
 source_name: ''

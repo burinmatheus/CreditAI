@@ -20,8 +20,8 @@ Cliente Solicita Crédito
          ↓
 ┌─────────────────────────┐
 │  Etapa 1: DFS           │
-│  Filtro de Persona      │ → Valida: Idade (18-75), Score (≥300), 
-│  (Árvore de Decisão)    │   Emprego, BACEN, Renda, Dívidas (≤40%)
+│  Filtro de Persona      │ → Classifica persona via renda, score e emprego 
+│  (Árvore de Decisão)    │   (premium/standard/basic) e checa restrições básicas
 └─────────────────────────┘
          ↓ [Passa]
 ┌─────────────────────────┐
@@ -38,7 +38,7 @@ Cliente Solicita Crédito
          ↓
 ┌─────────────────────────┐
 │  Etapa 4: RNA           │
-│  Decisão Final          │ → Rede Neural (10→8→3) com Softmax
+│  Decisão Final          │ → MLP 10→16→3, ReLU na oculta, softmax só na inferência
 │  (Rede Neural)          │   Aprovado/Em Análise/Rejeitado
 └─────────────────────────┘
          ↓
@@ -114,7 +114,6 @@ cd CreditAI
    - API: http://localhost:8000
    - Swagger UI: http://localhost:8000/docs
    - ReDoc: http://localhost:8000/redoc
-CreditAI/ 
 ## 📡 API Endpoints
 
 ### POST /api/credit/analyze
@@ -131,15 +130,19 @@ Executa análise completa de crédito em 4 etapas.
     "marital_status": "married",
     "employment_status": "employed",
     "income": 8500.0,
-│   │   └── adapters/                # (vazio no momento)
     "time_at_job_months": 48,
     "has_bank_account": true,
     "has_bacen_restriction": false,
     "num_credit_inquiries": 2,
-    "num_existing_loans": 1
+    "num_existing_loans": 1,
+    "debt_to_income_ratio": 0.25,
+    "credit_score": 720
   },
   "product_type": "personal_loan",
   "requested_amount": 25000.0,
+  "requested_installments": 36,
+  "purpose": "Reforma residencial"
+}
 ```
 
 **Response:** (DTO `CreditAnalysisResponseDTO`)
@@ -152,17 +155,24 @@ Executa análise completa de crédito em 4 etapas.
   "rejection_reason": null,
 
   "persona_filter_passed": true,
-  "persona_decision_path": ["age_ok", "bacen_ok", "score_ok"],
+  "persona_decision_path": ["income>=10000", "score>=750"],
 
   "credit_limit_amount": 25000.0,
   "max_installment_value": 850.0,
-  "risk_score": 2.1,
+  "risk_score": 0.12,
   "risk_description": "Low default risk",
   "approved_amount": 25000.0,
-  "approved_installments": 36,
+  "approved_installments": 36
+}
 ```
 
 ### GET /api/credit/products
+Lista os produtos e faixas suportadas.
+
+```json
+{
+  "products": [
+    {
       "type": "personal_loan",
       "name": "Personal Loan",
       "min_amount": 1000.0,
@@ -170,11 +180,16 @@ Executa análise completa de crédito em 4 etapas.
       "max_installments": 48,
       "base_rate": 0.025,
       "base_rate_percent": 2.5
-    },
-    ...
+    }
   ]
 }
 ```
+
+### POST /api/credit/generate-data
+Gera dataset sintético e salva em `data/training`.
+
+### POST /api/credit/train-from-file
+Treina a RNA a partir de um JSONL salvo em `data/training`.
 
 ### GET /api/credit/health
 Health check do serviço de análise de crédito.
@@ -205,6 +220,7 @@ curl http://localhost:8000/api/credit/products
 
 # Health check
 curl http://localhost:8000/api/credit/health
+```
 
 ## ✅ Testes automatizados (pytest)
 
@@ -243,30 +259,19 @@ mlflow ui \
 1. Gere dados sintéticos: `POST /api/credit/generate-data`.
 2. Treine a partir de JSONL existente: `POST /api/credit/train-from-file` (forneça `filename`).
 3. Abra a UI do MLflow (comando acima) e visualize runs, métricas e artefatos.
-```
+3. Abra a UI do MLflow (comando acima) e visualize runs, métricas e artefatos.
 
 ## 🔬 Detalhes das Técnicas de IA
 
 ### 1. DFS - Depth-First Search (Filtro de Persona)
 
-Implementa uma **árvore de decisão** percorrida em profundidade:
+Árvore de decisão simples para classificar a persona:
 
-```python
-Raiz
-├─ Idade [18-75]?
-│  ├─ Sim → Score ≥ 300?
-│  │  ├─ Sim → Empregado?
-│  │  │  ├─ Sim → BACEN OK?
-│  │  │  │  ├─ Sim → Renda Suficiente?
-│  │  │  │  │  ├─ Sim → Dívidas ≤ 40%?
-│  │  │  │  │  │  ├─ Sim → ✅ APROVADO
-│  │  │  │  │  │  └─ Não → ❌ debt_ratio
-│  │  │  │  │  └─ Não → ❌ income
-│  │  │  │  └─ Não → ❌ bacen_restriction
-│  │  │  └─ Não → ❌ employment
-│  │  └─ Não → ❌ credit_score
-│  └─ Não → ❌ age_requirement
-```
+- Premium: renda ≥ 10.000 e score ≥ 750, com emprego qualificado.
+- Standard: renda ≥ 2.000 e score ≥ 550, com emprego qualificado.
+- Basic: fallback se renda ≥ 0, score ≥ 0 e emprego qualificado/aposentado.
+
+Percurso DFS vai da raiz (renda alta) até folhas premium/standard/basic, com ramificações de fallback quando um critério falha.
 
 ### 2. BFS - Breadth-First Search (Cálculo de Limite)
 
@@ -322,36 +327,22 @@ Debt Ratio:
 
 ### 4. Neural Network - MLP (Decisão Final)
 
-Rede Neural **Feedforward Multi-Layer Perceptron**:
+Rede Neural **Feedforward Multi-Layer Perceptron** usada para a decisão final:
 
 ```
-Input Layer (10 neurons):
-  - age_normalized
-  - credit_score_normalized
-  - income_normalized
-  - debt_ratio
-  - employment_binary
-  - bank_account_binary
-  - num_inquiries_normalized
-  - num_loans_normalized
-  - risk_score (da etapa 3)
-  - limit_ratio (limite/solicitado)
+Input (10):
+  age_norm, credit_score_norm, income_norm, debt_ratio,
+  employment_binary, bank_account_binary,
+  inquiries_norm, loans_norm, risk_score, limit_ratio
 
-Hidden Layer (8 neurons):
-  - Activation: Sigmoid
-  - Pesos inicializados com heurística baseada em regras de negócio
-
-Output Layer (3 neurons):
-  - Activation: Softmax
-  - [APPROVED, UNDER_REVIEW, REJECTED]
+Hidden (16): ReLU
+Output (3 logits): [APPROVED, PENDING_REVIEW, REJECTED]
+Softmax só é aplicado na inferência/decisão.
 ```
 
-**Forward Propagation:**
-```python
-hidden = sigmoid(input @ weights_input_hidden + bias_hidden)
-output = softmax(hidden @ weights_hidden_output + bias_output)
-decision = argmax(output)
-```
+- Inicialização guiada por regras de negócio (pesos que reforçam score/renda/emprego e penalizam risco/dívida/limite alto). 
+- Treino: CrossEntropyLoss + Adam (lr 1e-3, weight_decay 1e-4), batches embaralhados; geração de dados sintéticos opcional via `POST /api/credit/generate-data` e treino via `POST /api/credit/train-from-file`.
+- MLflow opcional: set `MLFLOW_TRACKING_URI` e `MLFLOW_EXPERIMENT` para logar parâmetros, métricas e artefatos.
 
 ## 📂 Estrutura do Projeto
 
@@ -398,7 +389,8 @@ CreditAI/
 
 - **Python 3.12**
 - **FastAPI** - Framework web moderno e rápido
-- **NumPy** - Computação numérica (rede neural)
+- **PyTorch** - Rede neural (treino e inferência)
+- **NumPy** - Geração de dados sintéticos
 - **Pydantic** - Validação de dados
 - **Docker & Docker Compose** - Containerização
 - **Uvicorn** - Servidor ASGI
