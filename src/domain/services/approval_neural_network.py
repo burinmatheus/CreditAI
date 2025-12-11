@@ -11,12 +11,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.domain.entities.credit_request import CustomerProfile
+from src.domain.entities.credit_request import CustomerProfile, EmploymentStatus
 from src.domain.entities.credit_analysis import RiskAssessment, ApprovalStatus
 
 
 class ApprovalMLP(nn.Module):
-    """MLP simples 10→8→3 para decisão de aprovação."""
+    """MLP simples 10→16→3 para decisão de aprovação."""
 
     def __init__(self):
         super().__init__()
@@ -110,6 +110,11 @@ class ApprovalNeuralNetwork:
             import mlflow
 
             tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
+            if not tracking_uri:
+                print("[MLflow] Desabilitado: tracking URI não configurado")
+                self.mlflow_enabled = False
+                return
+
             mlflow.set_tracking_uri(tracking_uri)
             mlflow.set_experiment(self.mlflow_experiment)
             self.mlflow = mlflow
@@ -239,7 +244,7 @@ class ApprovalNeuralNetwork:
         """Gera dados sintéticos com rótulos baseados em regras de negócio simples."""
         rng = np.random.default_rng()
 
-        ages = rng.integers(18, 75, size=n)
+        ages = rng.integers(18, 101, size=n)
         scores = rng.integers(0, 1000, size=n)
         incomes = rng.uniform(800, 50000, size=n)
         debt_ratios = rng.uniform(0.0, 1.0, size=n)
@@ -250,7 +255,7 @@ class ApprovalNeuralNetwork:
         risk_scores = rng.uniform(0.0, 1.0, size=n)
         limit_ratios = rng.uniform(0.3, 1.2, size=n)
 
-        age_norm = (ages - 18) / (75 - 18)
+        age_norm = (ages - 18) / (100 - 18)
         score_norm = scores / 1000.0
         income_norm = np.minimum(1.0, np.log1p(incomes) / np.log1p(50000))
         inquiries_norm = np.minimum(1.0, inquiries / 10.0)
@@ -270,12 +275,13 @@ class ApprovalNeuralNetwork:
             limit_ratio_clamped,
         ], axis=1).astype(np.float32)
 
-        labels = self._label_from_rules(scores, risk_scores, debt_ratios, limit_ratios, employment)
+        labels = self._label_from_rules(ages, scores, risk_scores, debt_ratios, limit_ratios, employment)
 
         return torch.tensor(features, dtype=torch.float32), torch.tensor(labels, dtype=torch.long)
 
     def _label_from_rules(
         self,
+        ages: np.ndarray,
         scores: np.ndarray,
         risk_scores: np.ndarray,
         debt_ratios: np.ndarray,
@@ -300,6 +306,7 @@ class ApprovalNeuralNetwork:
                 (risk_scores >= 0.45)
                 | (limit_ratios > 0.95)
                 | (employment == 0.0)
+                | (ages > 75)
             )
         )
         labels[pending_mask] = 1
@@ -313,16 +320,23 @@ class ApprovalNeuralNetwork:
         requested_amount: float,
         risk_assessment: RiskAssessment,
     ) -> torch.Tensor:
-        age_norm = (profile.age - 18) / (75 - 18)
+        age_clamped = min(100.0, max(18.0, float(profile.age)))
+        age_norm = (age_clamped - 18.0) / (100.0 - 18.0)
+
         score_norm = profile.credit_score / 1000.0
-        income_norm = min(1.0, np.log1p(profile.income) / np.log1p(50000))
+
+        income_clamped = min(50000.0, max(800.0, float(profile.income)))
+        income_norm = min(1.0, np.log1p(income_clamped) / np.log1p(50000.0))
+
         debt_ratio = profile.debt_to_income_ratio
-        employment_binary = 1.0 if profile.employment_status in ["employed", "self_employed"] else 0.0
+        employment_binary = 1.0 if profile.employment_status in {EmploymentStatus.EMPLOYED, EmploymentStatus.SELF_EMPLOYED} else 0.0
         bank_account_binary = 1.0 if profile.has_bank_account else 0.0
         inquiries_norm = min(1.0, profile.num_credit_inquiries / 10.0)
         loans_norm = min(1.0, profile.num_existing_loans / 5.0)
         risk_score = risk_assessment.risk_score
-        limit_ratio = min(1.0, requested_amount / approved_limit) if approved_limit > 0 else 1.0
+
+        raw_limit_ratio = requested_amount / approved_limit if approved_limit > 0 else 1.0
+        limit_ratio = min(1.0, max(0.0, raw_limit_ratio))
 
         arr = np.array([
             age_norm,

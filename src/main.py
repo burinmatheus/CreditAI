@@ -18,7 +18,7 @@ def bootstrap_application():
     Bootstrap da aplicação com injeção de dependências
     Segue o padrão de arquitetura hexagonal
     """
-    print("🚀 Inicializando CreditAI com Arquitetura Hexagonal...\n")
+    print("🚀 Inicializando CreditAI...\n")
 
     # ===== APPLICATION LAYER =====
     print("⚙️  Inicializando camada de aplicação...")
@@ -31,7 +31,7 @@ def bootstrap_application():
     print("✓ Serviços de aplicação inicializados\n")
 
     # ===== INTERFACE LAYER =====
-    print("🌐 Inicializando camada de interface (FastAPI + OpenAPI)...")
+    print("🌐 Inicializando camada de interface (FastAPI)...")
     
     # Criar aplicação FastAPI
     fastapi_app = FastAPIApp(
@@ -39,7 +39,7 @@ def bootstrap_application():
         credit_analysis_service=credit_analysis_service
     )
     
-    print("✓ Interface FastAPI + OpenAPI configurada\n")
+    print("✓ Interface FastAPI configurada\n")
 
     return fastapi_app
 
@@ -54,10 +54,7 @@ def main():
     print(f"✓ Servidor FastAPI rodando na porta {APP_PORT}")
     print(f"  📍 API Root: http://localhost:{APP_PORT}/")
     print(f"  📖 Swagger UI: http://localhost:{APP_PORT}/docs")
-    print(f"  📘 ReDoc: http://localhost:{APP_PORT}/redoc")
     print("=" * 70)
-    print("\n🎯 Arquitetura Hexagonal + FastAPI aplicados com sucesso!")
-    print("   Domain → Application → Infrastructure → Interfaces (FastAPI)\n")
 
     # Iniciar servidor Uvicorn
     uvicorn.run(

@@ -24,6 +24,14 @@ class MaritalStatus(str, Enum):
     WIDOWED = "widowed"
 
 
+class EmploymentStatus(str, Enum):
+    """Status de emprego do cliente"""
+    EMPLOYED = "employed"
+    SELF_EMPLOYED = "self_employed"
+    UNEMPLOYED = "unemployed"
+    RETIRED = "retired"
+
+
 class ProductType(str, Enum):
     """Tipos de produtos de crédito"""
     PERSONAL_LOAN = "personal_loan"
@@ -50,7 +58,7 @@ class CustomerProfile:
     debt_to_income_ratio: float  # Percentual de endividamento (0-1)
     
     # Emprego
-    employment_status: str  # "employed", "self_employed", "unemployed"
+    employment_status: EmploymentStatus
     time_at_job_months: int  # Tempo no emprego atual
     
     # Histórico bancário
@@ -69,8 +77,8 @@ class CustomerProfile:
         if self.income <= 0:
             return False, "Renda deve ser maior que zero"
         
-        if not 300 <= self.credit_score <= 900:
-            return False, "Credit score deve estar entre 300 e 900"
+        if not 0 <= self.credit_score <= 1000:
+            return False, "Credit score deve estar entre 0 e 1000"
         
         if not 0 <= self.debt_to_income_ratio <= 1:
             return False, "Debt-to-income ratio deve estar entre 0 e 1"

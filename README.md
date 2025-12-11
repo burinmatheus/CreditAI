@@ -206,6 +206,19 @@ curl http://localhost:8000/api/credit/products
 # Health check
 curl http://localhost:8000/api/credit/health
 
+## ✅ Testes automatizados (pytest)
+
+Cada etapa tem seu arquivo de testes dedicado:
+- Etapa 1 (DFS/persona): `tests/test_stage1_persona_filter_dfs.py`
+- Etapa 2 (BFS/limite): `tests/test_stage2_credit_limit_bfs.py`
+- Etapa 3 (Fuzzy/riscos): `tests/test_stage3_risk_fuzzy_logic.py`
+- Etapa 4 (RNA/MLP): `tests/test_stage4_approval_neural_network.py`
+
+Como executar tudo (dentro do devcontainer):
+```bash
+pytest tests
+```
+
 ## 📈 MLflow – acompanhando os treinos
 
 O projeto registra treinos da rede neural no MLflow.

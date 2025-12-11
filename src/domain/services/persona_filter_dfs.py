@@ -1,5 +1,5 @@
 from typing import Callable, Optional, Dict, Any
-from src.domain.entities.credit_request import CreditRequest
+from src.domain.entities.credit_request import CreditRequest, EmploymentStatus
 
 
 class DecisionNode:
@@ -47,7 +47,11 @@ class PersonaFilterDFS:
 
         basic_employment = DecisionNode(
             "Emprego qualificado ou aposentado?",
-            condition=lambda p: p.employment_status in ["employed", "self_employed", "retired"],
+            condition=lambda p: p.employment_status in {
+                EmploymentStatus.EMPLOYED,
+                EmploymentStatus.SELF_EMPLOYED,
+                EmploymentStatus.RETIRED,
+            },
             true_branch=basic_score,
             false_branch=None
         )
@@ -71,7 +75,10 @@ class PersonaFilterDFS:
 
         standard_employment = DecisionNode(
             "Emprego qualificado?",
-            condition=lambda p: p.employment_status in ["employed", "self_employed"],
+            condition=lambda p: p.employment_status in {
+                EmploymentStatus.EMPLOYED,
+                EmploymentStatus.SELF_EMPLOYED,
+            },
             true_branch=standard_score,
             false_branch=None,
         )
@@ -95,7 +102,10 @@ class PersonaFilterDFS:
 
         premium_employment = DecisionNode(
             "Emprego qualificado?",
-            condition=lambda p: p.employment_status in ["employed", "self_employed"],
+            condition=lambda p: p.employment_status in {
+                EmploymentStatus.EMPLOYED,
+                EmploymentStatus.SELF_EMPLOYED,
+            },
             true_branch=premium_score,
             false_branch=standard_income
         )
@@ -149,7 +159,8 @@ class PersonaFilterDFS:
         rules = baseline[persona_name]
         confidence = 0.0
 
-        income_ratio = profile.income / (rules["min_income"] * 2)
+        income_denominator = max(rules["min_income"] * 2, 1.0)
+        income_ratio = profile.income / income_denominator
         confidence += min(income_ratio, 0.4)
 
         if profile.credit_score:
@@ -158,7 +169,7 @@ class PersonaFilterDFS:
         else:
             confidence += 0.2
 
-        if profile.employment_status in ["employed", "self_employed"]:
+        if profile.employment_status in {EmploymentStatus.EMPLOYED, EmploymentStatus.SELF_EMPLOYED}:
             confidence += 0.2
         else:
             confidence += 0.1
