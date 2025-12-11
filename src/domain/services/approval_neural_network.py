@@ -189,9 +189,12 @@ class ApprovalNeuralNetwork:
 
         torch.set_grad_enabled(True)  # habilita autograd (cálculo de gradientes) durante o treino
         self.model.train()  # coloca o modelo em modo treino
+        
         # Otimizador e perda:
-        # - Adam: descida de gradiente com momentum (1ª média dos gradientes) + escala adaptativa (2ª média das variâncias) e bias correction; costuma convergir rápido e é menos sensível ao lr.
-        # - CrossEntropyLoss: aplica softmax nos logits e calcula entropia cruzada negativa contra o rótulo inteiro (0/1/2), penalizando probabilidades baixas na classe correta.
+        # - Adam: descida de gradiente com momentum (1ª média dos gradientes) + escala adaptativa (2ª média das variâncias) e bias correction; 
+        #           costuma convergir rápido e é menos sensível ao learning rate.
+        # - CrossEntropyLoss: aplica softmax nos logits e calcula entropia cruzada negativa contra o rótulo inteiro (0/1/2), 
+        #           penalizando probabilidades baixas na classe correta.
         opt = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=1e-4)
         criterion = nn.CrossEntropyLoss()
 
