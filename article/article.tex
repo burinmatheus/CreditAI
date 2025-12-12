@@ -1,0 +1,488 @@
+\documentclass[12pt]{article}
+
+\usepackage{sbc-template}
+\usepackage{graphicx,url}
+\usepackage[utf8]{inputenc}
+\usepackage[brazil]{babel}
+
+\sloppy
+
+\title{CreditAI: Sistema de Concessão de Crédito e Detecção de Risco
+       com Técnicas de Inteligência Artificial}
+
+\author{Diego Meinerz\inst{1}, Elias A. G. Miranda\inst{1},
+        Fernanda T. Wammes\inst{1}, Matheus M. Burin\inst{1}}
+
+\address{Universidade Regional do Noroeste do Estado do Rio Grande do Sul
+  (UNIJUÍ)\\
+  Santa Rosa -- RS -- Brazil, Departamento de Ciências da Computação
+  \email{diego.meinerz@sou.unijui.edu.br, elias.miranda@sou.unijui.edu.br}\\
+   \email{fernanda.wammes@sou.unijui.edu.br, matheus.burin@sou.unijui.edu.br}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This paper presents \textit{CreditAI}, a decision-support system for
+credit granting and default risk detection in financial institutions.
+The proposed model automates the analysis of loan applications by
+combining four Artificial Intelligence techniques in a sequential
+pipeline: (1) Depth-First Search (DFS) for persona classification using
+decision trees, (2) Breadth-First Search (BFS) for credit limit
+calculation exploring amount-installment state spaces, (3) Fuzzy Logic
+with scikit-fuzzy for risk assessment, and (4) a Multi-Layer Perceptron
+(MLP) neural network implemented in PyTorch for final approval decision.
+The system receives customer profile data (income, credit score,
+employment status, debt ratio, among others) and returns the approved
+limit, risk level (low, medium or high) and the final status (approved,
+rejected or pending review). Results indicate that the approach allows
+more transparent, consistent and scalable credit analysis when compared
+to purely manual processes.
+\end{abstract}
+
+\begin{resumo}
+Este artigo apresenta o \textit{CreditAI}, um sistema de apoio à decisão
+para concessão de crédito e detecção de risco de inadimplência em
+instituições financeiras. O modelo proposto automatiza a análise de
+propostas de empréstimo combinando quatro técnicas de Inteligência
+Artificial em um pipeline sequencial: (1) Busca em Profundidade (DFS)
+para classificação de personas usando árvores de decisão, (2) Busca em
+Largura (BFS) para cálculo de limite explorando espaços de estados
+valor-parcela, (3) Lógica Fuzzy com scikit-fuzzy para avaliação de
+risco, e (4) uma Rede Neural Perceptron Multicamadas (MLP) implementada
+em PyTorch para decisão final de aprovação. A solução recebe dados do
+perfil do cliente (renda, score de crédito, status de emprego, taxa de
+endividamento, entre outros) e retorna o limite aprovado, o nível de
+risco (baixo, médio ou alto) e o status final (aprovado, reprovado ou
+em análise). Os resultados indicam maior transparência, padronização e
+escalabilidade em relação ao processo manual tradicional.
+\end{resumo}
+
+\section{Introdução}
+
+A concessão de crédito é uma atividade central para bancos, cooperativas
+e fintechs, mas envolve riscos relevantes de inadimplência e perda
+financeira. Tradicionalmente, a análise de propostas era realizada por
+analistas de crédito, de forma manual, a partir de documentos,
+consultas a birôs e experiência prévia. Esse processo tende a ser lento,
+subjetivo, custoso e suscetível a erros humanos, especialmente em
+cenários de alto volume de solicitações.
+
+Com a expansão do crédito digital e o surgimento de novas fintechs, há
+uma demanda crescente por sistemas automatizados que apoiem a tomada de
+decisão, reduzindo risco e aumentando a eficiência. Nesse contexto,
+propomos o \textit{CreditAI}, um sistema que aplica quatro técnicas
+distintas de Inteligência Artificial organizadas em um pipeline
+sequencial para analisar pedidos de crédito, estimar limites e
+classificar o risco de inadimplência de forma estruturada.
+
+\section{Problema e Relevância}
+
+O problema tratado neste trabalho pode ser resumido da seguinte forma:
+dado o perfil de um cliente e os parâmetros de produtos de crédito
+(empréstimo pessoal, cartão de crédito, garantia de veículo ou
+imóvel), decidir se a proposta deve ser aprovada, reprovada ou
+encaminhada para análise manual, bem como calcular o limite sugerido e
+o risco associado.
+
+Os principais desafios são:
+(i) grande volume de solicitações;
+(ii) dados por vezes incompletos ou inconsistentes;
+(iii) necessidade de respostas rápidas;
+(iv) cumprimento de políticas internas e exigências regulatórias;
+(v) balanceamento entre inclusão financeira e gestão de risco.
+
+A relevância do problema está na redução de perdas financeiras,
+aumento da competitividade, maior inclusão financeira e melhoria da
+rastreabilidade e explicabilidade das decisões de crédito.
+
+\section{Dados Utilizados}
+
+O \textit{CreditAI} utiliza dados estruturados do perfil do cliente,
+organizados nos seguintes grupos:
+
+\begin{itemize}
+  \item \textbf{Dados demográficos:} idade, gênero e estado civil.
+  
+  \item \textbf{Dados financeiros:} renda mensal (\texttt{income}),
+        score de crédito em escala de 0 a 1000
+        (\texttt{credit\_score}), e taxa de endividamento como proporção
+        da renda (\texttt{debt\_to\_income\_ratio}).
+  
+  \item \textbf{Dados de emprego:} status de emprego
+        (\texttt{employment\_status}: empregado, autônomo, aposentado
+        ou desempregado) e tempo no emprego atual em meses
+        (\texttt{time\_at\_job\_months}).
+  
+  \item \textbf{Histórico bancário e de crédito:} existência de conta
+        bancária (\texttt{has\_bank\_account}), restrições no BACEN
+        (\texttt{has\_bacen\_restriction}), número de consultas de
+        crédito recentes (\texttt{num\_credit\_inquiries}) e número de
+        empréstimos ativos (\texttt{num\_existing\_loans}).
+  
+  \item \textbf{Dados da solicitação:} valor solicitado
+        (\texttt{requested\_amount}), número de parcelas desejado
+        (\texttt{requested\_installments}) e tipo de produto
+        (\texttt{product\_type}).
+\end{itemize}
+
+Cada produto possui parâmetros específicos de valor mínimo/máximo,
+número máximo de parcelas e taxa de juros base. 
+
+
+\section{Modelo Proposto}
+
+O \textit{CreditAI} organiza o processo de análise em quatro etapas
+sequenciais, cada uma utilizando uma técnica de Inteligência Artificial
+específica:
+
+\subsection{Etapa 1: Filtro por Persona com Busca em Profundidade (DFS)}
+
+A primeira etapa classifica o cliente em uma de três personas de crédito
+-- \textit{Premium}, \textit{Standard} ou \textit{Basic} -- utilizando
+uma árvore de decisão percorrida por \textbf{Busca em Profundidade
+(Depth-First Search -- DFS)}.
+
+A árvore é construída com nós de decisão baseados em condições sobre os
+atributos do cliente. Cada nó interno representa uma condição
+(por exemplo, ``Renda $\geq$ R\$ 10.000?''), com ramificações para
+respostas verdadeiras e falsas. Os nós folha representam as personas
+finais ou rejeição quando o cliente não se enquadra em nenhuma categoria.
+
+A navegação na árvore inicia pela raiz e segue recursivamente pelos
+ramos até alcançar uma folha:
+
+\begin{enumerate}
+  \item \textbf{Persona Premium:} Renda $\geq$ R\$ 10.000, emprego
+        qualificado (empregado ou autônomo) e score $\geq$ 750.
+        Limite máximo: R\$ 100.000, multiplicador de renda: 5x.
+  
+  \item \textbf{Persona Standard:} Renda $\geq$ R\$ 2.000, emprego
+        qualificado e score $\geq$ 550. Limite máximo: R\$ 50.000,
+        multiplicador de renda: 3x.
+  
+  \item \textbf{Persona Basic:} Renda $\geq$ R\$ 0.00, emprego
+        qualificado ou aposentado, e score $\geq$ 0. Limite máximo:
+        R\$ 20.000, multiplicador de renda: 2x.
+\end{enumerate}
+
+Se o cliente não atende aos critérios mínimos de nenhuma persona, a
+proposta é rejeitada automaticamente nesta etapa.
+
+\subsection{Etapa 2: Cálculo do Limite com Busca em Largura (BFS)}
+
+O objetivo desta etapa é determinar o \textit{limite de crédito aprovado}
+e o número de parcelas viável utilizando \textbf{Busca em Largura
+(Breadth-First Search -- BFS)} para explorar o espaço de estados
+(valor, parcelas).
+
+O algoritmo funciona da seguinte forma:
+
+\begin{enumerate}
+  \item Calcula o limite base a partir da renda e do multiplicador da
+        persona: \texttt{income\_limit = income * multiplier}.
+  
+  \item Aplica fatores de ajuste baseados em:
+        \begin{itemize}
+          \item Score de crédito (\texttt{score\_factor}): varia de
+                0.7 a 1.2 dependendo da faixa de score.
+          \item Status de emprego (\texttt{employment\_factor}):
+                empregado (1.0), autônomo (0.95), aposentado (0.85),
+                desempregado (0.5).
+          \item Histórico de crédito (\texttt{history\_factor}):
+                bonificação por empréstimos anteriores e penalização por
+                alto endividamento.
+        \end{itemize}
+  
+  \item Define o teto de busca (\texttt{search\_cap}) como o mínimo
+        entre o limite da persona, limite do produto e limite ajustado
+        pelos fatores.
+  
+  \item Inicia a BFS com estado inicial
+        (\texttt{min\_amount}, \texttt{start\_installments}) e explora
+        vizinhos:
+        \begin{itemize}
+          \item Incrementa o valor em passos fixos (ex: R\$ 500).
+          \item Aumenta o número de parcelas para reduzir valor mensal.
+        \end{itemize}
+  
+  \item Para cada estado, calcula a parcela mensal usando a fórmula
+        Price:
+        $$\text{PMT} = P \cdot \frac{r \cdot (1+r)^n}{(1+r)^n - 1}$$
+        onde $P$ é o principal, $r$ a taxa mensal e $n$ o número de
+        parcelas.
+  
+  \item Valida se a parcela respeita a regra de comprometimento máximo
+        de renda (30\%). Se válido, atualiza o melhor valor encontrado.
+  
+  \item Continua a busca até esgotar os estados viáveis ou atingir o
+        teto de busca.
+\end{enumerate}
+
+A BFS garante que o sistema explore sistematicamente as combinações de
+valor e prazo, encontrando o maior limite aprovável que respeita as
+restrições de capacidade de pagamento.
+
+\subsection{Etapa 3: Avaliação de Risco com Lógica Fuzzy}
+
+A terceira etapa estima o risco de inadimplência usando \textbf{Lógica
+Fuzzy} implementada com a biblioteca \texttt{scikit-fuzzy}. Esta
+abordagem permite lidar com a incerteza e subjetividade inerentes à
+avaliação de risco.
+
+O sistema fuzzy é composto por:
+
+\begin{itemize}
+  \item \textbf{Variáveis de entrada} (antecedentes):
+        \begin{itemize}
+          \item \texttt{credit\_score}: score de crédito (0--1000),
+                com conjuntos fuzzy \textit{low}, \textit{med} e
+                \textit{high}.
+          \item \texttt{income}: renda mensal (0--50.000), com
+                conjuntos \textit{low}, \textit{med} e \textit{high}.
+          \item \texttt{debt\_ratio}: taxa de endividamento (0--1),
+                com conjuntos \textit{low}, \textit{med} e \textit{high}.
+          \item \texttt{employment\_time}: tempo de emprego em meses
+                (0--120), com conjuntos \textit{short}, \textit{med} e
+                \textit{long}.
+          \item \texttt{inquiries}: consultas de crédito (0--20), com
+                conjuntos \textit{few} e \textit{many}.
+          \item \texttt{limit\_ratio}: razão entre valor solicitado e
+                limite aprovado (0--1), com conjuntos \textit{low},
+                \textit{med} e \textit{high}.
+        \end{itemize}
+  
+  \item \textbf{Variável de saída} (consequente):
+        \texttt{risk}: score de risco (0--1), com conjuntos
+        \textit{low}, \textit{med} e \textit{high}.
+  
+  \item \textbf{Funções de pertinência}: funções trapezoidais e
+        triangulares modelam a transição gradual entre conceitos
+        (ex: score ``baixo'' vs ``médio''). O sistema fuzzy utiliza funções trapezoidais nos extremos das variáveis (garantindo região de pertinência máxima seguida de transição gradual) e funções triangulares para valores intermediários (com pico único no protótipo ideal). Essa combinação permite que um valor possua graus de pertinência em múltiplos conjuntos simultaneamente, ativando várias regras em paralelo e gerando decisões ponderadas que refletem a incerteza natural dos critérios de crédito.
+  
+  \item \textbf{Regras fuzzy}: 15 regras do tipo SE-ENTÃO capturam o
+        conhecimento especialista, por exemplo:
+        \begin{itemize}
+          \item SE score é \textit{high} E dívida é \textit{low} ENTÃO
+                risco é \textit{low}.
+          \item SE score é \textit{low} E dívida é \textit{med} ENTÃO
+                risco é \textit{high}.
+          \item SE dívida é \textit{high} E renda é \textit{low} ENTÃO
+                risco é \textit{high}.
+        \end{itemize}
+\end{itemize}
+
+O processo de inferência fuzzy funciona como segue:
+
+\begin{enumerate}
+  \item \textbf{Fuzzificação:} os valores numéricos das entradas são
+        convertidos em graus de pertinência nos conjuntos fuzzy.
+  \item \textbf{Inferência:} as regras são avaliadas usando operadores
+        fuzzy (AND = mínimo, OR = máximo).
+  \item \textbf{Agregação:} os resultados das regras ativadas são
+        combinados.
+  \item \textbf{Defuzzificação:} o conjunto fuzzy de saída é
+        convertido em um valor numérico.
+\end{enumerate}
+
+O score de risco resultante (0--1) é mapeado em três níveis:
+
+\begin{itemize}
+  \item \textbf{Baixo risco:} risco $< 0.40$
+  \item \textbf{Médio risco:} $0.40 \leq$ risco $< 0.70$
+  \item \textbf{Alto risco:} risco $\geq 0.70$
+\end{itemize}
+
+O sistema também gera gráficos das curvas de pertinência com o score
+calculado marcado, facilitando a interpretação e auditoria das decisões.
+
+\subsection{Etapa 4: Decisão Final com Rede Neural (PyTorch)}
+
+A etapa final utiliza uma \textbf{Rede Neural Perceptron Multicamadas
+(MLP)} implementada em \textbf{PyTorch} para determinar a decisão final:
+\textit{approved}, \textit{pending\_review} ou \textit{rejected}.
+
+A arquitetura da rede é:
+
+\begin{itemize}
+  \item \textbf{Camada de entrada:} 10 neurônios correspondentes aos
+        atributos normalizados:
+        \begin{itemize}
+          \item Idade normalizada: $(idade - 18) / (75 - 18)$
+          \item Score normalizado: $score / 1000$
+          \item Renda normalizada: $\min(1, \ln(1 + renda) / \ln(50001))$
+          \item Taxa de endividamento (0--1)
+          \item Emprego (binário: 1 se empregado/autônomo, 0 caso
+                contrário)
+          \item Conta bancária (binário)
+          \item Consultas normalizadas: $\min(1, consultas / 10)$
+          \item Empréstimos normalizados: $\min(1, empréstimos / 5)$
+          \item Score de risco fuzzy (0--1)
+          \item Razão limite: $\min(1, valor\_solicitado / limite)$
+        \end{itemize}
+  
+  \item \textbf{Camada oculta:} 16 neurônios com função de ativação ReLU.
+  
+  \item \textbf{Camada de saída:} 3 neurônios (logits) correspondentes
+        às classes \textit{approved}, \textit{pending} e
+        \textit{rejected}.
+\end{itemize}
+Utilizou-se duas funções de ativação:
+
+ReLU na camada oculta: evita saturação de gradientes, treina rápido em dados tabulares e lida bem com valores não normalizados simétricos.
+
+Softmax na saída: transforma os logits em probabilidades somando 1 para as três classes.
+
+Os pesos da rede são inicializados com heurísticas de negócio alinhadas
+às regras de rotulagem dos dados sintéticos, garantindo convergência
+estável durante o treinamento. A decisão final é obtida aplicando
+\texttt{softmax} aos logits e selecionando a classe com maior
+probabilidade.
+
+\subsubsection{Treinamento da Rede}
+
+O sistema implementa um pipeline completo de treinamento:
+
+\begin{enumerate}
+  \item \textbf{Geração de dados sintéticos:} método
+        \texttt{generate\_dataset\_jsonl} cria exemplos de treino com
+        1000 amostras por padrão, usando regras de negócio para
+        rotulação:
+        \begin{itemize}
+          \item \textit{Rejected} se: risco fuzzy $> 0.75$ OU score $< 500$
+                OU endividamento $> 0.55$.
+          \item \textit{Pending} se: risco $\geq 0.45$ OU razão limite
+                $> 0.95$ OU desempregado.
+          \item \textit{Approved} caso contrário.
+        \end{itemize}
+  
+  \item \textbf{Treinamento:} método \texttt{train\_from\_jsonl} realiza
+        o treinamento supervisionado usando:
+        \begin{itemize}
+          \item Otimizador: Adam com learning rate de $10^{-3}$ e
+                weight decay de $10^{-4}$.
+          \item Função de perda: Cross-Entropy Loss.
+          \item Batch size: 64.
+          \item Épocas: 30 (padrão).
+        \end{itemize}
+  
+  \item \textbf{Rastreamento com MLflow:} o sistema integra-se com
+        MLflow para registrar:
+        \begin{itemize}
+          \item Hiperparâmetros (learning rate, epochs, batch size).
+          \item Métricas de perda por época.
+          \item Artefatos (pesos do modelo, dados de treino).
+        \end{itemize}
+  
+  \item \textbf{Salvamento e carregamento:} os pesos treinados são
+        salvos em \texttt{models/approval\_mlp.pt} e carregados
+        automaticamente na próxima inicialização.
+\end{enumerate}
+
+A rede neural permite capturar interações não-lineares complexas entre
+os atributos que regras manuais dificilmente modelariam, além de
+fornecer probabilidades calibradas para cada decisão.
+
+\section{Pipeline de Execução}
+
+O \textit{CreditAI} executa as quatro etapas sequencialmente, com saída
+antecipada em caso de rejeição:
+
+\begin{enumerate}
+  \item Se a \textbf{Etapa 1} (DFS) não encontrar persona válida, a
+        proposta é rejeitada com motivo \texttt{PERSONA\_FILTER}.
+  
+  \item A \textbf{Etapa 2} (BFS) calcula o limite aprovado e fatores
+        relevantes.
+  
+  \item A \textbf{Etapa 3} (Fuzzy) avalia o risco de inadimplência.
+  
+  \item A \textbf{Etapa 4} (RNA) toma a decisão final considerando todos
+        os dados anteriores:
+        \begin{itemize}
+          \item Se \textit{approved}: retorna valor aprovado, parcelas e
+                valor mensal.
+          \item Se \textit{rejected}: define o motivo como
+                \texttt{HIGH\_RISK} se score fuzzy $> 0.65$, caso
+                contrário \texttt{OTHER}.
+          \item Se \textit{pending}: encaminha para análise manual.
+        \end{itemize}
+\end{enumerate}
+
+O sistema retorna um objeto \texttt{CreditAnalysisResult} completo com
+todos os detalhes das quatro etapas, permitindo auditoria e
+explicabilidade da decisão.
+
+\section{Resultados e Discussão}
+
+A implementação do \textit{CreditAI} demonstra a viabilidade de integrar
+múltiplas técnicas de IA em um pipeline de análise de crédito. Cada
+técnica contribui com capacidades específicas:
+
+\begin{itemize}
+  \item \textbf{DFS (Etapa 1):} Garante classificação eficiente em
+        árvore de decisão com tempo $O(h)$, onde $h$ é a altura da
+        árvore. Permite segmentação clara de clientes e aplicação de
+        políticas diferenciadas por persona.
+  
+  \item \textbf{BFS (Etapa 2):} Explora sistematicamente o espaço de
+        soluções valor-parcela, garantindo que a melhor combinação
+        viável seja encontrada. Tempo $O(V)$ onde $V$ é o número de
+        estados visitados (limitado pelo teto de busca e passo).
+  
+  \item \textbf{Lógica Fuzzy (Etapa 3):} Trata incerteza e conceitos
+        vagos (``score razoável'', ``dívida alta'') de forma natural,
+        produzindo scores contínuos mais informativos que classificações
+        binárias. Facilita explicação das decisões através das regras
+        ativas.
+  
+  \item \textbf{RNA/PyTorch (Etapa 4):} Captura padrões complexos e
+        não-lineares, aprendendo com dados sintéticos que refletem
+        políticas de negócio. O treinamento com backpropagation permite
+        ajuste fino dos pesos. Fornece probabilidades calibradas para
+        cada classe de decisão.
+\end{itemize}
+
+\subsection{Vantagens da Abordagem}
+
+\begin{itemize}
+  \item \textbf{Modularidade:} cada etapa pode ser ajustada ou
+        substituída independentemente.
+  \item \textbf{Explicabilidade:} as três primeiras etapas são baseadas
+        em regras interpretáveis; a RNA fornece probabilidades que
+        auxiliam na explicação.
+  \item \textbf{Escalabilidade:} o sistema processa requisições em
+        tempo constante após carregamento dos modelos, adequado para
+        alto volume.
+  \item \textbf{Rastreabilidade:} integração com MLflow permite
+        versionamento e auditoria completa dos modelos e decisões.
+\end{itemize}
+
+\section{Considerações Finais}
+
+O \textit{CreditAI} demonstra como técnicas clássicas de IA (busca em
+grafos, lógica fuzzy) podem ser integradas com aprendizado de máquina
+moderno (redes neurais com PyTorch) para criar um sistema de análise de
+crédito robusto e explicável. A organização em pipeline sequencial com
+quatro etapas distintas permite balancear eficiência computacional,
+interpretabilidade e capacidade preditiva.
+
+O projeto serve como prova de conceito para instituições financeiras
+interessadas em automatizar e padronizar seus processos de concessão de
+crédito, reduzindo custos operacionais e tempo de resposta enquanto
+mantém controle sobre políticas de risco. A arquitetura modular facilita
+adaptações para diferentes produtos, segmentos de mercado e requisitos
+regulatórios.
+
+
+\bibliographystyle{sbc}
+\bibliography{sbc-template}
+\cite{cerf2024balancedbfs}
+\cite{chang2022mlp}
+\cite{jurkovic2004stochasticfuzzy}
+\cite{tarjan2022strongcomponents}
+
+
+\end{document}
